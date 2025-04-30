@@ -14,9 +14,16 @@ dependencies = [
     "transformers>=4.30.0",
     "torch>=2.0.0",
     "torchaudio>=2.0.0",
-    "pytube>=12.1.0",
     "librosa>=0.10.0",
+    "yt-dlp>=2025.3.31",
+    "soundfile>=0.12.1",
+    "audioread>=3.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["taqsim-ai"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.11.7",
+]
