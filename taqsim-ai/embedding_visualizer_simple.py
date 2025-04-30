@@ -236,7 +236,13 @@ def create_visualization(
         y=alt.Y("y:Q", title="UMAP Dimension 2"),
         color=alt.Color(
             "song_name:N",
-            legend=alt.Legend(title="Songs", orient="right", labelLimit=400),
+            legend=alt.Legend(
+                title="Songs",
+                orient="right",
+                labelLimit=600,  # Much larger limit to prevent truncation
+                direction="vertical",
+                symbolLimit=0,
+            ),
         ),
     )
 
@@ -320,10 +326,12 @@ def create_visualization(
             titleFontSize=14,
             labelFontSize=12,
             symbolSize=150,
-            labelLimit=500,  # Increased label limit for legend
+            labelLimit=800,  # Significantly increased label limit for legend
+            symbolLimit=0,
             columns=1,
             padding=20,  # Add padding around legend
             cornerRadius=5,  # Rounded corners for legend
+            labelOverlap=False,  # Prevent label overlap
         )
     )
 

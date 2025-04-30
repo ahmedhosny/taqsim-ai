@@ -44,6 +44,7 @@ def create_directories():
 def download_youtube_audio(youtube_url, output_path=None):
     """
     Download audio from a YouTube video using yt-dlp.
+    If the video is already downloaded, it will not download it again.
 
     Args:
         youtube_url: URL of the YouTube video
@@ -52,7 +53,7 @@ def download_youtube_audio(youtube_url, output_path=None):
     Returns:
         Path to the downloaded audio file
     """
-    print(f"Downloading audio from: {youtube_url}")
+    print(f"Processing YouTube URL: {youtube_url}")
 
     # Use the downloads directory if no output path is specified
     if output_path is None:
@@ -72,6 +73,13 @@ def download_youtube_audio(youtube_url, output_path=None):
             print(
                 f"Could not extract video ID from URL, using generated ID: {video_id}"
             )
+
+        # Check if the video is already downloaded
+        for file in os.listdir(output_path):
+            if video_id in file:
+                existing_file = os.path.join(output_path, file)
+                print(f"Video already downloaded: {existing_file}")
+                return existing_file
 
         # Check for ffmpeg availability
         ffmpeg_available = False
