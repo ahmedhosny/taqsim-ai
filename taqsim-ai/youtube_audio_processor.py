@@ -21,7 +21,7 @@ from transformers import pipeline
 
 # Create necessary directories
 def create_directories():
-    """Create necessary directories for storing audio files and classification results."""
+    """Create necessary directories for storing audio files, classification results, and embeddings."""
     # Get the path to the data directory
     data_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
@@ -31,12 +31,14 @@ def create_directories():
     audio_chunks_dir = os.path.join(data_dir, "audio_chunks")
     downloads_dir = os.path.join(data_dir, "downloads")
     classifications_dir = os.path.join(data_dir, "genre_classifications")
+    embeddings_dir = os.path.join(data_dir, "embeddings")
 
     os.makedirs(audio_chunks_dir, exist_ok=True)
     os.makedirs(downloads_dir, exist_ok=True)
     os.makedirs(classifications_dir, exist_ok=True)
+    os.makedirs(embeddings_dir, exist_ok=True)
 
-    return audio_chunks_dir, downloads_dir, classifications_dir
+    return audio_chunks_dir, downloads_dir, classifications_dir, embeddings_dir
 
 
 def download_youtube_audio(youtube_url, output_path=None):
@@ -54,7 +56,7 @@ def download_youtube_audio(youtube_url, output_path=None):
 
     # Use the downloads directory if no output path is specified
     if output_path is None:
-        _, output_path, _ = create_directories()
+        _, output_path, _, _ = create_directories()
 
     try:
         # Extract video ID for naming the output file
@@ -285,15 +287,124 @@ def save_audio_chunks(
     return chunk_paths
 
 
-def classify_audio_chunks(chunks):
+def extract_embeddings_from_maest(
+    chunks, model_name="mtg-upf/discogs-maest-30s-pw-129e", transformer_block=6
+):
+    """
+    Extract embeddings from the MAEST model for each audio chunk.
+
+    Args:
+        chunks: List of audio chunks as numpy arrays
+        model_name: Name of the MAEST model to use
+        transformer_block: Which transformer block to extract embeddings from (default: 6)
+
+    Returns:
+        Dictionary with chunk indices as keys and embeddings as values
+    """
+    print(f"Loading MAEST model for embedding extraction: {model_name}")
+
+    try:
+        # Try to import the MAEST model directly
+        try:
+            # First try to import from maest package if installed
+            from maest import get_maest
+
+            model = get_maest(arch=model_name.split("/")[-1])
+            print("Successfully loaded MAEST model from maest package")
+            direct_maest = True
+        except ImportError:
+            # If that fails, use the transformers model
+            from transformers import AutoFeatureExtractor, AutoModel
+
+            model = AutoModel.from_pretrained(model_name, trust_remote_code=True)
+            feature_extractor = AutoFeatureExtractor.from_pretrained(
+                model_name, trust_remote_code=True
+            )
+            print("Using transformers model for embedding extraction")
+            direct_maest = False
+
+        # Set model to evaluation mode
+        model.eval()
+
+        embeddings_dict = {}
+
+        import torch
+
+        with torch.no_grad():
+            for i, chunk in enumerate(chunks):
+                print(f"Extracting embeddings for chunk {i + 1}/{len(chunks)}...")
+
+                if direct_maest:
+                    # Use the direct MAEST interface
+                    _, embeddings = model(chunk, transformer_block=transformer_block)
+                    # Convert to numpy array
+                    embeddings = embeddings.cpu().numpy()
+                else:
+                    # Use the transformers interface
+                    inputs = feature_extractor(
+                        chunk, sampling_rate=16000, return_tensors="pt"
+                    )
+                    outputs = model(**inputs, output_hidden_states=True)
+
+                    # Get embeddings from the specified transformer block
+                    hidden_states = outputs.hidden_states[transformer_block]
+
+                    # Extract CLS token, DIST token, and average of rest of tokens
+                    cls_token = hidden_states[0, 0].cpu().numpy()  # CLS token
+                    dist_token = hidden_states[0, 1].cpu().numpy()  # DIST token
+                    rest_tokens = (
+                        hidden_states[0, 2:].mean(dim=0).cpu().numpy()
+                    )  # Average of rest
+
+                    # Stack them together
+                    embeddings = np.vstack([cls_token, dist_token, rest_tokens])
+
+                # Store embeddings for this chunk
+                embeddings_dict[i + 1] = embeddings
+
+        return embeddings_dict
+
+    except Exception as e:
+        print(f"Error extracting embeddings: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return {}
+
+
+def save_embeddings_to_file(embeddings_dict, output_file="embeddings.npz"):
+    """
+    Save embeddings to a numpy compressed file.
+
+    Args:
+        embeddings_dict: Dictionary with chunk indices as keys and embeddings as values
+        output_file: Path to the output file
+    """
+    try:
+        # Convert integer keys to strings for np.savez_compressed
+        string_dict = {f"chunk_{key}": value for key, value in embeddings_dict.items()}
+        np.savez_compressed(output_file, **string_dict)
+        print(f"Saved embeddings to {output_file}")
+        return True
+    except Exception as e:
+        print(f"Error saving embeddings: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return False
+
+
+def classify_audio_chunks(chunks, extract_embeddings=False):
     """
     Classify audio chunks using the MAEST model.
 
     Args:
         chunks: List of audio chunks as numpy arrays
+        extract_embeddings: Whether to also extract embeddings from the model
 
     Returns:
-        List of classification results for each chunk
+        Tuple of (classification results, embeddings_dict) if extract_embeddings is True,
+        otherwise just classification results
     """
     print("Loading audio classification model...")
     pipe = pipeline(
@@ -312,6 +423,12 @@ def classify_audio_chunks(chunks):
         print(f"\nChunk {i + 1} Classification Results:")
         for pred in result[:3]:
             print(f"Label: {pred['label']}, Score: {pred['score']:.4f}")
+
+    # Extract embeddings if requested
+    if extract_embeddings:
+        print("\nExtracting embeddings from the model...")
+        embeddings_dict = extract_embeddings_from_maest(chunks)
+        return results, embeddings_dict
 
     return results
 
@@ -339,18 +456,22 @@ def save_results_to_csv(results, output_file="classification_results.csv"):
     )
 
 
-def process_youtube_link(youtube_url):
+def process_youtube_link(youtube_url, extract_embeddings=True):
     """
     Process a YouTube link: download, process, and classify.
 
     Args:
         youtube_url: URL of the YouTube video
+        extract_embeddings: Whether to extract embeddings from the model
 
     Returns:
-        List of classification results
+        Tuple of (classification results, embeddings_dict) if extract_embeddings is True,
+        otherwise just classification results
     """
     # Create directories and get paths
-    audio_chunks_dir, downloads_dir, classifications_dir = create_directories()
+    audio_chunks_dir, downloads_dir, classifications_dir, embeddings_dir = (
+        create_directories()
+    )
 
     # Download audio
     audio_file = download_youtube_audio(youtube_url, output_path=downloads_dir)
@@ -377,17 +498,33 @@ def process_youtube_link(youtube_url):
         chunks, output_dir=audio_chunks_dir, base_filename=f"youtube_{video_id}"
     )
 
-    # Classify chunks
-    results = classify_audio_chunks(chunks)
+    # Classify chunks and optionally extract embeddings
+    if extract_embeddings:
+        results, embeddings_dict = classify_audio_chunks(
+            chunks, extract_embeddings=True
+        )
+
+        # Create embeddings directory if it doesn't exist
+        embeddings_dir = os.path.join(os.path.dirname(audio_chunks_dir), "embeddings")
+        os.makedirs(embeddings_dir, exist_ok=True)
+
+        # Save embeddings to file
+        embeddings_file = os.path.join(
+            embeddings_dir, f"embeddings_youtube_{video_id}.npz"
+        )
+        save_embeddings_to_file(embeddings_dict, output_file=embeddings_file)
+        print(f"Embeddings saved to: {embeddings_file}")
+    else:
+        results = classify_audio_chunks(chunks, extract_embeddings=False)
 
     # Save results to genre_classifications directory
-    data_dir = os.path.dirname(audio_chunks_dir)
-    classifications_dir = os.path.join(data_dir, "genre_classifications")
     results_file = os.path.join(
         classifications_dir, f"classification_youtube_{video_id}.csv"
     )
     save_results_to_csv(results, output_file=results_file)
 
+    if extract_embeddings:
+        return results, embeddings_dict
     return results
 
 

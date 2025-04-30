@@ -18,6 +18,8 @@ dependencies = [
     "yt-dlp>=2025.3.31",
     "soundfile>=0.12.1",
     "audioread>=3.0.0",
+    "matplotlib>=3.9.4",
+    "umap-learn>=0.5.3",
 ]
 
 [tool.hatch.build.targets.wheel]
