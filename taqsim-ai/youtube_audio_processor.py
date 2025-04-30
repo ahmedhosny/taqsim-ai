@@ -21,7 +21,7 @@ from transformers import pipeline
 
 # Create necessary directories
 def create_directories():
-    """Create necessary directories for storing audio files."""
+    """Create necessary directories for storing audio files and classification results."""
     # Get the path to the data directory
     data_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
@@ -30,11 +30,13 @@ def create_directories():
     # Create subdirectories under data/
     audio_chunks_dir = os.path.join(data_dir, "audio_chunks")
     downloads_dir = os.path.join(data_dir, "downloads")
+    classifications_dir = os.path.join(data_dir, "genre_classifications")
 
     os.makedirs(audio_chunks_dir, exist_ok=True)
     os.makedirs(downloads_dir, exist_ok=True)
+    os.makedirs(classifications_dir, exist_ok=True)
 
-    return audio_chunks_dir, downloads_dir
+    return audio_chunks_dir, downloads_dir, classifications_dir
 
 
 def download_youtube_audio(youtube_url, output_path=None):
@@ -52,7 +54,7 @@ def download_youtube_audio(youtube_url, output_path=None):
 
     # Use the downloads directory if no output path is specified
     if output_path is None:
-        _, output_path = create_directories()
+        _, output_path, _ = create_directories()
 
     try:
         # Extract video ID for naming the output file
@@ -317,6 +319,7 @@ def classify_audio_chunks(chunks):
 def save_results_to_csv(results, output_file="classification_results.csv"):
     """
     Save classification results to a CSV file.
+    Only saves the top three predictions for each chunk.
 
     Args:
         results: List of classification results for each chunk
@@ -327,10 +330,13 @@ def save_results_to_csv(results, output_file="classification_results.csv"):
         writer.writerow(["Chunk", "Rank", "Label", "Score"])
 
         for chunk_idx, chunk_results in enumerate(results):
-            for rank, pred in enumerate(chunk_results):
+            # Only save the top three predictions for each chunk
+            for rank, pred in enumerate(chunk_results[:3]):
                 writer.writerow([chunk_idx + 1, rank + 1, pred["label"], pred["score"]])
 
-    print(f"Saved classification results to {output_file}")
+    print(
+        f"Saved classification results to {output_file} (top 3 predictions per chunk)"
+    )
 
 
 def process_youtube_link(youtube_url):
@@ -344,7 +350,7 @@ def process_youtube_link(youtube_url):
         List of classification results
     """
     # Create directories and get paths
-    audio_chunks_dir, downloads_dir = create_directories()
+    audio_chunks_dir, downloads_dir, classifications_dir = create_directories()
 
     # Download audio
     audio_file = download_youtube_audio(youtube_url, output_path=downloads_dir)
@@ -374,9 +380,12 @@ def process_youtube_link(youtube_url):
     # Classify chunks
     results = classify_audio_chunks(chunks)
 
-    # Save results to data directory
+    # Save results to genre_classifications directory
     data_dir = os.path.dirname(audio_chunks_dir)
-    results_file = os.path.join(data_dir, f"classification_youtube_{video_id}.csv")
+    classifications_dir = os.path.join(data_dir, "genre_classifications")
+    results_file = os.path.join(
+        classifications_dir, f"classification_youtube_{video_id}.csv"
+    )
     save_results_to_csv(results, output_file=results_file)
 
     return results
