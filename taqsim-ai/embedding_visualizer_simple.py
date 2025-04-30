@@ -261,17 +261,20 @@ def create_visualization(
 
     # Draw lines (only if there are any)
     if not lines_df.empty:
-        # Create a chart for the lines
-        lines = (
+        # Create separate charts for lines with different conditions
+        # Lines for selected songs when toggle is on
+        lines_selected_on = (
             alt.Chart(lines_df)
-            .mark_rule(opacity=0.5, color="black")
-            .encode(
-                x="x1:Q",
-                y="y1:Q",
-                x2="x2:Q",
-                y2="y2:Q",
-                opacity=alt.condition(show_lines, alt.value(0.5), alt.value(0)),
+            .transform_filter(
+                show_lines  # Only when toggle is on
             )
+            .mark_rule(color="black", opacity=0.5)
+            .encode(x="x1:Q", y="y1:Q", x2="x2:Q", y2="y2:Q")
+        )
+
+        # Apply selection filter to the lines
+        lines = lines_selected_on.transform_filter(
+            selection  # Only for selected songs
         )
     else:
         lines = alt.Chart().mark_rule()  # Empty chart
