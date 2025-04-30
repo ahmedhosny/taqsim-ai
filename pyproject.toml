@@ -20,6 +20,8 @@ dependencies = [
     "audioread>=3.0.0",
     "matplotlib>=3.9.4",
     "umap-learn>=0.5.3",
+    "altair>=5.1.2",
+    "pandas>=2.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]
