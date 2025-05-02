@@ -182,11 +182,68 @@ def download_youtube_audio(youtube_url, output_path=None):
         return None
 
 
+def remove_silence(audio, sr, threshold_db=40, min_silence_duration=0.5):
+    """
+    Remove silence from the beginning and end of an audio signal.
+    Uses a more aggressive approach with multiple thresholds.
+
+    Args:
+        audio: Audio signal as numpy array
+        sr: Sample rate of the audio
+        threshold_db: Threshold in decibels above reference to consider as non-silence (positive value)
+        min_silence_duration: Minimum duration of silence in seconds
+
+    Returns:
+        Trimmed audio signal
+    """
+    print("Removing silence from audio...")
+
+    # Try with a high threshold first (more aggressive silence removal)
+    non_silent_intervals = librosa.effects.split(
+        audio, top_db=threshold_db, frame_length=2048, hop_length=512
+    )
+
+    # If no intervals found or they're too short, try with a more lenient threshold
+    if (
+        len(non_silent_intervals) == 0
+        or (non_silent_intervals[-1][1] - non_silent_intervals[0][0]) / sr < 10.0
+    ):  # at least 10 seconds
+        more_lenient_threshold = (
+            threshold_db - 10
+        )  # Lower threshold to detect more sounds
+        print(f"Trying more lenient threshold: {more_lenient_threshold}dB")
+        non_silent_intervals = librosa.effects.split(
+            audio, top_db=more_lenient_threshold, frame_length=2048, hop_length=512
+        )
+
+    if len(non_silent_intervals) == 0:
+        print("No non-silent intervals found, returning original audio")
+        return audio
+
+    # Get the start and end of non-silent audio
+    start_sample = non_silent_intervals[0][0]
+    end_sample = non_silent_intervals[-1][1]
+
+    # Convert to time for logging
+    start_time = start_sample / sr
+    end_time = end_sample / sr
+    duration = end_time - start_time
+
+    print(
+        f"Trimmed {start_time:.2f}s from beginning and {(len(audio) - end_sample) / sr:.2f}s from end"
+    )
+    print(f"New audio duration: {duration:.2f}s")
+
+    # Return the trimmed audio
+    return audio[start_sample:end_sample]
+
+
 def process_audio(audio_file, target_sr=16000, chunk_duration=30):
     """
     Process audio file:
     1. Load and convert to target sample rate
-    2. Split into chunks of specified duration
+    2. Remove silence from beginning and end
+    3. Split into chunks of specified duration
 
     Args:
         audio_file: Path to the audio file
@@ -234,13 +291,18 @@ def process_audio(audio_file, target_sr=16000, chunk_duration=30):
 
         print(f"Loading audio file: {converted_file}")
         # Set duration=None to load the entire file
-        y, sr = librosa.load(converted_file, sr=target_sr, mono=True)
+        audio, sr = librosa.load(converted_file, sr=target_sr, mono=True)
+        print(
+            f"Loaded audio file with sample rate {sr} Hz, duration: {len(audio) / sr:.2f}s"
+        )
 
-        if len(y) == 0:
+        # Remove silence from beginning and end
+        audio = remove_silence(audio, sr)
+        if len(audio) == 0:
             raise ValueError("Loaded audio has zero length")
 
         print(
-            f"Successfully loaded audio: {len(y) / target_sr:.2f} seconds at {target_sr}Hz"
+            f"Successfully loaded audio: {len(audio) / target_sr:.2f} seconds at {target_sr}Hz"
         )
 
         # Calculate chunk size in samples
@@ -248,8 +310,8 @@ def process_audio(audio_file, target_sr=16000, chunk_duration=30):
 
         # Split audio into chunks
         chunks = []
-        for i in range(0, len(y), chunk_size):
-            chunk = y[i : i + chunk_size]
+        for i in range(0, len(audio), chunk_size):
+            chunk = audio[i : i + chunk_size]
 
             # If chunk is shorter than chunk_size, pad with zeros
             if len(chunk) < chunk_size:
@@ -486,7 +548,7 @@ def process_youtube_link(youtube_url, extract_embeddings=True):
     if not audio_file:
         return None
 
-    # Process audio
+    # Process audio and remove silence
     chunks = process_audio(audio_file)
     if not chunks:
         return None
