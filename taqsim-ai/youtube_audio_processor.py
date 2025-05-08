@@ -15,6 +15,7 @@ from pathlib import Path
 
 import librosa
 import numpy as np
+import pandas as pd
 import yt_dlp
 from transformers import pipeline
 
@@ -184,58 +185,57 @@ def download_youtube_audio(youtube_url, output_path=None):
 
 def remove_silence(audio, sr, threshold_db=40, min_silence_duration=0.5):
     """
-    Remove silence from the beginning and end of an audio signal.
-    Uses a more aggressive approach with multiple thresholds.
+    Remove silence from the beginning and end of an audio signal only.
+    Preserves all audio content (including silences) in the middle of the track.
+    Uses librosa's trim function which is specifically designed for trimming silence
+    at the beginning and end of audio.
 
     Args:
         audio: Audio signal as numpy array
         sr: Sample rate of the audio
-        threshold_db: Threshold in decibels above reference to consider as non-silence (positive value)
-        min_silence_duration: Minimum duration of silence in seconds
+        threshold_db: Threshold in decibels below reference to consider as silence (positive value)
+        min_silence_duration: Minimum duration of silence in seconds (not used in trim method)
 
     Returns:
-        Trimmed audio signal
+        Trimmed audio signal with silence removed only from beginning and end
     """
-    print("Removing silence from audio...")
+    print("Removing silence from beginning and end of audio only...")
 
-    # Try with a high threshold first (more aggressive silence removal)
-    non_silent_intervals = librosa.effects.split(
+    # First attempt with the specified threshold
+    trimmed_audio, trim_indices = librosa.effects.trim(
         audio, top_db=threshold_db, frame_length=2048, hop_length=512
     )
 
-    # If no intervals found or they're too short, try with a more lenient threshold
-    if (
-        len(non_silent_intervals) == 0
-        or (non_silent_intervals[-1][1] - non_silent_intervals[0][0]) / sr < 10.0
-    ):  # at least 10 seconds
+    # If trimming removed too much (resulting in very short audio), try with a more lenient threshold
+    if len(trimmed_audio) / sr < 10.0:  # at least 10 seconds
         more_lenient_threshold = (
             threshold_db - 10
         )  # Lower threshold to detect more sounds
-        print(f"Trying more lenient threshold: {more_lenient_threshold}dB")
-        non_silent_intervals = librosa.effects.split(
+        print(
+            f"First trim resulted in very short audio. Trying more lenient threshold: {more_lenient_threshold}dB"
+        )
+        trimmed_audio, trim_indices = librosa.effects.trim(
             audio, top_db=more_lenient_threshold, frame_length=2048, hop_length=512
         )
 
-    if len(non_silent_intervals) == 0:
-        print("No non-silent intervals found, returning original audio")
+    # If still too short or no trimming occurred, return original
+    if len(trimmed_audio) / sr < 5.0 or len(trimmed_audio) == len(audio):
+        print("Minimal or no trimming possible, returning original audio")
         return audio
 
-    # Get the start and end of non-silent audio
-    start_sample = non_silent_intervals[0][0]
-    end_sample = non_silent_intervals[-1][1]
+    # Get the start and end indices
+    start_sample, end_sample = trim_indices
 
     # Convert to time for logging
     start_time = start_sample / sr
-    end_time = end_sample / sr
-    duration = end_time - start_time
+    end_time = (len(audio) - end_sample) / sr
+    duration = len(trimmed_audio) / sr
 
-    print(
-        f"Trimmed {start_time:.2f}s from beginning and {(len(audio) - end_sample) / sr:.2f}s from end"
-    )
+    print(f"Trimmed {start_time:.2f}s from beginning and {end_time:.2f}s from end")
     print(f"New audio duration: {duration:.2f}s")
 
-    # Return the trimmed audio
-    return audio[start_sample:end_sample]
+    # Return the trimmed audio - this only removes silence from beginning and end
+    return trimmed_audio
 
 
 def process_audio(audio_file, target_sr=16000, chunk_duration=30):
@@ -614,38 +614,45 @@ def main():
     if args.url:
         process_youtube_link(args.url)
     elif args.csv:
-        with open(args.csv, "r") as csvfile:
-            reader = csv.reader(csvfile)
-            next(reader)  # Skip header row
-            for row in reader:
-                if row:  # Skip empty rows
-                    url = row[0]
-                    print(f"\nProcessing YouTube URL: {url}")
-                    process_youtube_link(url)
+        # Use pandas to read the CSV file
+        df = pd.read_csv(args.csv)
+
+        # Process each row
+        for index, row in df.iterrows():
+            url = row["link"]  # URL is in the 'link' column
+            song_info = f" - {row['song_name']}" if "song_name" in df.columns else ""
+            print(f"\nProcessing YouTube URL: {url}{song_info}")
+            process_youtube_link(url)
     else:
         # Use URLs from the CSV file
-        csv_path = Path(__file__).parent.parent / "data" / "taqsim_youtube_links.csv"
+        csv_path = Path(__file__).parent.parent / "data" / "taqsim_ai.csv"
         if csv_path.exists():
-            with open(csv_path, "r") as csvfile:
-                reader = csv.reader(csvfile)
-                try:
-                    next(reader)  # Skip header row
-                except StopIteration:
+            try:
+                # Use pandas to read the CSV file
+                df = pd.read_csv(csv_path)
+
+                if df.empty:
                     print("CSV file is empty.")
                     return
 
                 processed = False
-                for row in reader:
-                    if row:  # Skip empty rows
-                        url = row[0]
-                        print(f"\nProcessing YouTube URL: {url}")
-                        process_youtube_link(url)
-                        processed = True
-                        if not args.all:
-                            break  # Process only the first URL by default
+                # Process each row (or just the first if args.all is False)
+                for index, row in df.head(n=5).iterrows():
+                    url = row["link"]  # URL is in the 'link' column
+                    song_info = (
+                        f" - {row['song_name']}" if "song_name" in df.columns else ""
+                    )
+                    print(f"\nProcessing YouTube URL: {url}{song_info}")
+                    process_youtube_link(url)
+                    processed = True
+                    if not args.all:
+                        break  # Process only the first URL by default
 
                 if not processed:
                     print("No valid YouTube URLs found in the CSV file.")
+            except Exception as e:
+                print(f"Error reading CSV file: {e}")
+                return
         else:
             print("No YouTube URL provided and no CSV file found.")
             print("Please provide a YouTube URL with --url or a CSV file with --csv")
