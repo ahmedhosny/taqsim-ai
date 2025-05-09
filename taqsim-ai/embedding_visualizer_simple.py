@@ -224,19 +224,6 @@ def create_visualization(
             metadata_by_video.get(vid, {}).get(column, "Unknown") for vid in video_ids
         ]
 
-    # Create tooltip with all metadata
-    tooltip_parts = []
-    for vid, num in zip(video_ids, chunk_numbers):
-        parts = []
-        for col in metadata_columns:
-            value = metadata_by_video.get(vid, {}).get(col, "Unknown")
-            parts.append(f"{col.capitalize()}: {value}")
-        parts.append(f"Video ID: {vid}")
-        parts.append(f"Chunk: {num}")
-        tooltip_parts.append("\n".join(parts))
-
-    df_data["tooltip"] = tooltip_parts
-
     # Create the DataFrame
     df = pd.DataFrame(df_data)
 
@@ -244,6 +231,7 @@ def create_visualization(
     df = df.sort_values(["video_id", "chunk_number"])
 
     # Create a dropdown parameter for selecting the coloring attribute
+    # Position it at the top of the chart
     color_by = alt.param(
         name="color_by",
         value="song_name",  # Default to song_name
@@ -251,21 +239,24 @@ def create_visualization(
             options=["song_name", "artist", "maqam", "type", "electric", "vintage"],
             labels=["Song Name", "Artist", "Maqam", "Type", "Electric", "Vintage"],
             name="Color by: ",
+            # Position at the top
+            debounce=10,  # Small delay to make selection smoother
         ),
     )
 
     # Create a selection for zooming
     zoom = alt.selection_interval(bind="scales")
 
-    # Create a toggle for lines
+    # Create a toggle for lines positioned at the top
     show_lines = alt.param(
         name="show_lines",
         value=True,
-        bind=alt.binding_checkbox(name="Show connecting lines"),
+        bind=alt.binding_checkbox(name="Show connecting lines "),
     )
 
-    # Create a selection for the legend
-    legend_selection = alt.selection_point(fields=["song_name"])
+    # Create a dynamic legend selection based on the color_by parameter
+    # This will update when the dropdown changes
+    legend_selection = alt.selection_point(bind="legend")
 
     # Base chart
     base = (
@@ -306,14 +297,17 @@ def create_visualization(
     lines_df = pd.DataFrame(lines_data) if lines_data else pd.DataFrame()
 
     # Create a new field for dynamic coloring based on the dropdown selection
+    # Also create a title field that will be used for the legend title
     base = base.transform_calculate(
-        color_value=f"datum[{color_by.name}]"  # This creates a field that changes with the dropdown
+        color_value=f"datum[{color_by.name}]",  # This creates a field that changes with the dropdown
+        title_value=f"{color_by.name}",  # This will be used for the legend title
     )
 
     # Do the same for the lines DataFrame if it's not empty
     if not lines_df.empty:
         lines_chart = alt.Chart(lines_df).transform_calculate(
-            color_value=f"datum[{color_by.name}]"  # Same dynamic field for lines
+            color_value=f"datum[{color_by.name}]",  # Same dynamic field for lines
+            title_value=f"{color_by.name}",  # Same title field for lines
         )
 
         # Draw lines with the dynamic color
@@ -329,9 +323,7 @@ def create_visualization(
                     "color_value:N",  # Use the calculated field
                     legend=None,  # No legend for lines
                 ),
-                detail="song_name:N",  # Ensure lines are drawn per song
             )
-            .transform_filter(legend_selection)
         )
     else:
         lines = alt.Chart().mark_rule()  # Empty chart
@@ -353,7 +345,7 @@ def create_visualization(
             ],
             color=alt.Color(
                 "color_value:N",  # Use the calculated field
-                title=None,  # Title will be set by the dropdown label
+                # title=f"{color_by.value}",  # Simple fixed title
                 legend=alt.Legend(
                     orient="right",
                     labelLimit=300,
@@ -376,26 +368,41 @@ def create_visualization(
     ).encode(
         text="chunk_number:Q",
         color=alt.value("black"),  # Explicitly set text color
-        opacity=alt.condition(legend_selection, alt.value(1), alt.value(0)),
+        opacity=alt.condition(legend_selection, alt.value(1), alt.value(0.2)),
     )
 
     # Create the final chart
     chart = (
         alt.layer(lines, points, text)
         .properties(
-            width=900,
+            width=800,  # Slightly smaller to leave room for legend
             height=700,
             title=f"UMAP Visualization of MAEST {embedding_type.upper()} Embeddings",
+            padding={
+                "left": 50,
+                "top": 50,
+                "right": 150,
+                "bottom": 50,
+            },  # Add padding for legend
         )
         .configure_view(stroke=None)
         .configure_axis(grid=True, gridOpacity=0.2)
         .configure_legend(
             orient="right",
-            labelLimit=300,
+            symbolSize=100,
+            labelLimit=500,
+            padding=10,
+            offset=5,  # Move legend away from the chart
             titleFontSize=14,
             labelFontSize=12,
-            symbolSize=100,
-            padding=10,
+            strokeColor="gray",
+            fillColor="#ffffff",
+            cornerRadius=5,
+            legendX=820,  # Position legend explicitly
+            legendY=100,
+        )
+        .resolve_scale(
+            color="independent"  # Make color scale independent of other scales
         )
     )
 
