@@ -60,60 +60,75 @@ def load_embeddings(embeddings_dir):
     return all_embeddings
 
 
-def get_song_names(downloads_dir, video_ids):
+def get_metadata_from_csv(video_ids):
     """
-    Get song names for the given video IDs from the downloads directory.
+    Get metadata for the given video IDs from the CSV file.
 
     Args:
-        downloads_dir: Path to the downloads directory
-        video_ids: List of video IDs to find song names for
+        video_ids: List of video IDs to find metadata for
 
     Returns:
-        Dictionary mapping video IDs to song names
+        Dictionary mapping video IDs to dictionaries of metadata
     """
-    song_names = {}
+    # Initialize with default values
+    metadata = {
+        vid: {
+            "song_name": "Unknown",
+            "artist": "Unknown",
+            "maqam": "Unknown",
+            "type": "Unknown",
+            "electric": "Unknown",
+            "vintage": "Unknown",
+        }
+        for vid in video_ids
+    }
 
-    for vid in video_ids:
-        song_name = "Unknown"
-        try:
-            # Look for files with this video ID in the filename
-            # Format can be either:
-            # 1. youtube_videoID_title.wav
-            # 2. title_videoID.wav
-            matching_files = [
-                f
-                for f in os.listdir(downloads_dir)
-                if (
-                    f.startswith(f"youtube_{vid}")
-                    or f.endswith(f"_{vid}.wav")
-                    or f.endswith(f"_{vid}.mp3")
-                )
-                and os.path.isfile(os.path.join(downloads_dir, f))
-            ]
+    try:
+        # Get the path to the CSV file
+        csv_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "data",
+            "taqsim_ai.csv",
+        )
 
-            if matching_files:
-                file_name = matching_files[0]
-                # Get the filename without extension
-                song_name = os.path.splitext(file_name)[0]
+        if os.path.exists(csv_path):
+            # Read the CSV file using pandas
+            df = pd.read_csv(csv_path)
 
-                # Handle different filename formats
-                if song_name.startswith(f"youtube_{vid}_"):
-                    # Format: youtube_videoID_title
-                    song_name = song_name[len(f"youtube_{vid}_") :]
-                elif song_name.startswith(f"youtube_{vid}"):
-                    # Format: youtube_videoID
-                    song_name = song_name[len(f"youtube_{vid}") :]
-                elif song_name.endswith(f"_{vid}"):
-                    # Format: title_videoID
-                    song_name = song_name[: -len(f"_{vid}")]
+            if not df.empty and "link" in df.columns:
+                # Get all column names except 'link'
+                metadata_columns = [col for col in df.columns if col != "link"]
 
-                print(f"Found song name for video {vid}: {song_name}")
-        except Exception as e:
-            print(f"Error finding song name for video {vid}: {e}")
+                # Process each row in the dataframe
+                for _, row in df.iterrows():
+                    try:
+                        # Extract video ID from the YouTube link
+                        url = row["link"]
+                        video_id = url.split("v=")[1]
+                        if "&" in video_id:
+                            video_id = video_id.split("&")[0]
 
-        song_names[vid] = song_name
+                        # If this video ID is in our list, extract all metadata
+                        if video_id in video_ids:
+                            # Create a dictionary with all available metadata
+                            video_metadata = {}
+                            for col in metadata_columns:
+                                # Use empty string if the value is NaN
+                                value = row[col] if pd.notna(row[col]) else "Unknown"
+                                video_metadata[col] = value
 
-    return song_names
+                            metadata[video_id] = video_metadata
+                            print(f"Found metadata for video {video_id}")
+                    except Exception as e:
+                        print(f"Error processing row in CSV: {e}")
+            else:
+                print("CSV file is empty or missing required columns.")
+        else:
+            print(f"CSV file not found at {csv_path}")
+    except Exception as e:
+        print(f"Error reading metadata from CSV: {e}")
+
+    return metadata
 
 
 def prepare_embeddings_for_umap(all_embeddings, embedding_type="cls"):
@@ -185,65 +200,63 @@ def create_visualization(
         all_embeddings, embedding_type
     )
 
-    # Get the downloads directory to find song names
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_dir = os.path.dirname(script_dir)
-    downloads_dir = os.path.join(project_dir, "data", "downloads")
-
-    # Get song names for all video IDs
+    # Get metadata for all video IDs
     unique_video_ids = list(set(video_ids))
-    song_names = get_song_names(downloads_dir, unique_video_ids)
+    metadata_by_video = get_metadata_from_csv(unique_video_ids)
 
     # Reduce dimensionality with UMAP
     print(f"Reducing dimensionality with UMAP (embedding type: {embedding_type})...")
     reducer = UMAP(n_neighbors=15, min_dist=0.1, random_state=42)
     embedding_2d = reducer.fit_transform(embeddings)
 
-    # Create a DataFrame for Altair
-    df = pd.DataFrame(
-        {
-            "x": embedding_2d[:, 0],
-            "y": embedding_2d[:, 1],
-            "video_id": video_ids,
-            "chunk_number": chunk_numbers,
-            "song_name": [song_names.get(vid, "Unknown") for vid in video_ids],
-            "tooltip": [
-                f"Song: {song_names.get(vid, 'Unknown')}\nVideo ID: {vid}\nChunk: {num}"
-                for vid, num in zip(video_ids, chunk_numbers)
-            ],
-        }
-    )
+    # Create a DataFrame for Altair with all metadata
+    df_data = {
+        "x": embedding_2d[:, 0],
+        "y": embedding_2d[:, 1],
+        "video_id": video_ids,
+        "chunk_number": chunk_numbers,
+    }
+
+    # Add all metadata columns
+    metadata_columns = ["song_name", "artist", "maqam", "type", "electric", "vintage"]
+    for column in metadata_columns:
+        df_data[column] = [
+            metadata_by_video.get(vid, {}).get(column, "Unknown") for vid in video_ids
+        ]
+
+    # Create tooltip with all metadata
+    tooltip_parts = []
+    for vid, num in zip(video_ids, chunk_numbers):
+        parts = []
+        for col in metadata_columns:
+            value = metadata_by_video.get(vid, {}).get(col, "Unknown")
+            parts.append(f"{col.capitalize()}: {value}")
+        parts.append(f"Video ID: {vid}")
+        parts.append(f"Chunk: {num}")
+        tooltip_parts.append("\n".join(parts))
+
+    df_data["tooltip"] = tooltip_parts
+
+    # Create the DataFrame
+    df = pd.DataFrame(df_data)
 
     # Sort the DataFrame by video_id and chunk_number for the line paths
     df = df.sort_values(["video_id", "chunk_number"])
 
-    # Create a selection that allows selecting songs by clicking on points
-    selection = alt.selection_point(fields=["song_name"], bind="legend")
+    # Define the metadata columns to use for coloring
+    color_columns = ["song_name", "artist", "maqam", "type", "electric", "vintage"]
 
-    # Create a toggle for lines
-    show_lines = alt.param(
-        name="show_lines",
-        value=True,
-        bind=alt.binding_checkbox(name="Show connecting lines"),
-    )
-
-    # Create a zoom selection
+    # Create a selection for zooming that will be shared across all charts
     zoom = alt.selection_interval(bind="scales")
 
-    # Base chart
+    # Create a toggle for lines - we'll create this once and share it across charts
+    show_lines = alt.binding_checkbox(name="Show connecting lines")
+    show_lines_param = alt.param(name="show_lines", bind=show_lines, value=True)
+
+    # Base chart template that will be repeated
     base = alt.Chart(df).encode(
         x=alt.X("x:Q", title="UMAP Dimension 1"),
         y=alt.Y("y:Q", title="UMAP Dimension 2"),
-        color=alt.Color(
-            "song_name:N",
-            legend=alt.Legend(
-                title="Songs",
-                orient="right",
-                labelLimit=600,  # Much larger limit to prevent truncation
-                direction="vertical",
-                symbolLimit=0,
-            ),
-        ),
     )
 
     # Create lines between consecutive chunks (drawn first, so they appear behind points)
@@ -252,86 +265,110 @@ def create_visualization(
         vid_df = df[df["video_id"] == vid].sort_values("chunk_number")
         if len(vid_df) > 1:
             for i in range(len(vid_df) - 1):
-                lines_data.append(
-                    {
-                        "x1": vid_df.iloc[i]["x"],
-                        "y1": vid_df.iloc[i]["y"],
-                        "x2": vid_df.iloc[i + 1]["x"],
-                        "y2": vid_df.iloc[i + 1]["y"],
-                        "song_name": vid_df.iloc[i]["song_name"],
-                    }
-                )
+                line_data = {
+                    "x1": vid_df.iloc[i]["x"],
+                    "y1": vid_df.iloc[i]["y"],
+                    "x2": vid_df.iloc[i + 1]["x"],
+                    "y2": vid_df.iloc[i + 1]["y"],
+                }
+                # Add all metadata columns
+                for col in color_columns:
+                    line_data[col] = vid_df.iloc[i][col]
+
+                lines_data.append(line_data)
 
     # Create a DataFrame for the lines
-    lines_df = pd.DataFrame(lines_data)
+    lines_df = pd.DataFrame(lines_data) if lines_data else pd.DataFrame()
 
-    # Draw lines (only if there are any)
-    if not lines_df.empty:
-        # Create separate charts for lines with different conditions
-        # Lines for selected songs when toggle is on
-        lines_selected_on = (
-            alt.Chart(lines_df)
-            .transform_filter(
-                show_lines  # Only when toggle is on
+    # Create a list to hold all the charts
+    charts = []
+
+    # Create a chart for each color column
+    for color_col in color_columns:
+        # Create a selection for this specific chart
+        selection = alt.selection_point(fields=[color_col], bind="legend")
+
+        # Draw lines (only if there are any)
+        if not lines_df.empty:
+            lines = (
+                alt.Chart(lines_df)
+                .transform_filter(show_lines_param)  # Only when toggle is on
+                .mark_rule(opacity=0.5)
+                .encode(
+                    x="x1:Q",
+                    y="y1:Q",
+                    x2="x2:Q",
+                    y2="y2:Q",
+                    color=alt.Color(
+                        f"{color_col}:N",
+                        legend=None,  # No legend for lines
+                    ),
+                )
+                .transform_filter(selection)
             )
-            .mark_rule(color="black", opacity=0.5)
-            .encode(x="x1:Q", y="y1:Q", x2="x2:Q", y2="y2:Q")
+        else:
+            lines = alt.Chart().mark_rule()  # Empty chart
+
+        # Draw points
+        points = (
+            base.mark_circle(size=100)
+            .encode(
+                opacity=alt.condition(selection, alt.value(0.9), alt.value(0.2)),
+                tooltip=["tooltip:N"],
+                color=alt.Color(
+                    f"{color_col}:N",
+                    title=color_col.capitalize(),
+                    legend=alt.Legend(
+                        orient="right",
+                    ),
+                ),
+            )
+            .add_params(selection, show_lines_param, zoom)
         )
 
-        # Apply selection filter to the lines
-        lines = lines_selected_on.transform_filter(
-            selection  # Only for selected songs
+        # Draw text labels (on top of points)
+        text = base.mark_text(
+            align="center",
+            baseline="middle",
+            fontSize=8,
+            fontWeight="bold",
+            dy=-10,  # Offset text above the point
+        ).encode(
+            text="chunk_number:Q",
+            color=alt.value("black"),  # Explicitly set text color in encoding
+            opacity=alt.condition(selection, alt.value(1), alt.value(0)),
         )
-    else:
-        lines = alt.Chart().mark_rule()  # Empty chart
 
-    # Draw points
-    points = (
-        base.mark_circle(size=100)
-        .encode(
-            opacity=alt.condition(selection, alt.value(0.9), alt.value(0.2)),
-            tooltip=["tooltip:N"],
-        )
-        .add_params(selection, show_lines, zoom)
-    )
-
-    # Draw text labels (on top of points)
-    text = base.mark_text(
-        align="center",
-        baseline="middle",
-        fontWeight="bold",
-        fontSize=9,
-        color="black",  # Always black text
-    ).encode(
-        text="chunk_number:Q",
-        color=alt.value("black"),  # Explicitly set text color in encoding
-        opacity=alt.condition(selection, alt.value(1), alt.value(0)),
-    )
-
-    # Combine all layers
-    chart = (
-        alt.layer(
+        # Combine layers for this color attribute
+        combined_chart = alt.layer(
             lines,  # Lines at the bottom
             points,  # Points in the middle
             text,  # Text on top
+        ).properties(
+            width=700,  # Slightly narrower to leave room for legend
+            height=400,  # Slightly smaller height for each chart
+            title=f"{color_col.capitalize()}",
         )
-        .properties(
-            width=800,
-            height=600,
-            title=f"UMAP Visualization of MAEST {embedding_type.upper()} Embeddings",
-        )
+
+        # Add this chart to our list
+        charts.append(combined_chart)
+
+    # Create a vertical concatenation of all charts
+    chart = (
+        alt.vconcat(*charts)
         .configure_view(stroke=None)
         .configure_axis(grid=True, gridOpacity=0.2)
+        .properties(
+            title=f"UMAP Visualization of MAEST {embedding_type.upper()} Embeddings",
+            autosize=alt.AutoSizeParams(type="fit", contains="padding"),
+        )
         .configure_legend(
+            orient="right",  # Place legend on the right
+            labelLimit=300,  # Allow longer labels
             titleFontSize=14,
             labelFontSize=12,
-            symbolSize=150,
-            labelLimit=800,  # Significantly increased label limit for legend
-            symbolLimit=0,
-            columns=1,
-            padding=20,  # Add padding around legend
-            cornerRadius=5,  # Rounded corners for legend
-            labelOverlap=False,  # Prevent label overlap
+            symbolSize=100,
+            padding=10,
         )
     )
 
