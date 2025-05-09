@@ -305,15 +305,20 @@ def create_visualization(
     # Create a DataFrame for the lines
     lines_df = pd.DataFrame(lines_data) if lines_data else pd.DataFrame()
 
-    # Create a transform_calculate to get the color value based on the color_by parameter
-    color_expr = "datum[color_by]"
+    # Create a new field for dynamic coloring based on the dropdown selection
+    base = base.transform_calculate(
+        color_value=f"datum[{color_by.name}]"  # This creates a field that changes with the dropdown
+    )
 
-    # Draw lines (only if there are any)
+    # Do the same for the lines DataFrame if it's not empty
     if not lines_df.empty:
+        lines_chart = alt.Chart(lines_df).transform_calculate(
+            color_value=f"datum[{color_by.name}]"  # Same dynamic field for lines
+        )
+
+        # Draw lines with the dynamic color
         lines = (
-            alt.Chart(lines_df)
-            .transform_filter(show_lines)  # Only when toggle is on
-            .transform_calculate(color_value=color_expr)
+            lines_chart.transform_filter(show_lines)  # Only when toggle is on
             .mark_rule(opacity=0.5)
             .encode(
                 x="x1:Q",
@@ -321,19 +326,19 @@ def create_visualization(
                 x2="x2:Q",
                 y2="y2:Q",
                 color=alt.Color(
-                    "color_value:N",
+                    "color_value:N",  # Use the calculated field
                     legend=None,  # No legend for lines
                 ),
+                detail="song_name:N",  # Ensure lines are drawn per song
             )
             .transform_filter(legend_selection)
         )
     else:
         lines = alt.Chart().mark_rule()  # Empty chart
 
-    # Draw points
+    # Draw points with the dynamic color
     points = (
         base.mark_circle(size=100)
-        .transform_calculate(color_value=color_expr)
         .encode(
             opacity=alt.condition(legend_selection, alt.value(0.9), alt.value(0.2)),
             tooltip=[
@@ -347,7 +352,8 @@ def create_visualization(
                 "chunk_number:Q",
             ],
             color=alt.Color(
-                "color_value:N",
+                "color_value:N",  # Use the calculated field
+                title=None,  # Title will be set by the dropdown label
                 legend=alt.Legend(
                     orient="right",
                     labelLimit=300,
