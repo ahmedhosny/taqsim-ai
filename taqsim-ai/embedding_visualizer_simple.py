@@ -243,23 +243,41 @@ def create_visualization(
     # Sort the DataFrame by video_id and chunk_number for the line paths
     df = df.sort_values(["video_id", "chunk_number"])
 
-    # Define the metadata columns to use for coloring
-    color_columns = ["song_name", "artist", "maqam", "type", "electric", "vintage"]
-
-    # Create a selection for zooming that will be shared across all charts
-    zoom = alt.selection_interval(bind="scales")
-
-    # Create a toggle for lines - we'll create this once and share it across charts
-    show_lines = alt.binding_checkbox(name="Show connecting lines")
-    show_lines_param = alt.param(name="show_lines", bind=show_lines, value=True)
-
-    # Base chart template that will be repeated
-    base = alt.Chart(df).encode(
-        x=alt.X("x:Q", title="UMAP Dimension 1"),
-        y=alt.Y("y:Q", title="UMAP Dimension 2"),
+    # Create a dropdown parameter for selecting the coloring attribute
+    color_by = alt.param(
+        name="color_by",
+        value="song_name",  # Default to song_name
+        bind=alt.binding_select(
+            options=["song_name", "artist", "maqam", "type", "electric", "vintage"],
+            labels=["Song Name", "Artist", "Maqam", "Type", "Electric", "Vintage"],
+            name="Color by: ",
+        ),
     )
 
-    # Create lines between consecutive chunks (drawn first, so they appear behind points)
+    # Create a selection for zooming
+    zoom = alt.selection_interval(bind="scales")
+
+    # Create a toggle for lines
+    show_lines = alt.param(
+        name="show_lines",
+        value=True,
+        bind=alt.binding_checkbox(name="Show connecting lines"),
+    )
+
+    # Create a selection for the legend
+    legend_selection = alt.selection_point(fields=["song_name"])
+
+    # Base chart
+    base = (
+        alt.Chart(df)
+        .encode(
+            x=alt.X("x:Q", title="UMAP Dimension 1"),
+            y=alt.Y("y:Q", title="UMAP Dimension 2"),
+        )
+        .add_params(color_by, zoom)
+    )
+
+    # Create lines between consecutive chunks
     lines_data = []
     for vid in df["video_id"].unique():
         vid_df = df[df["video_id"] == vid].sort_values("chunk_number")
@@ -272,7 +290,14 @@ def create_visualization(
                     "y2": vid_df.iloc[i + 1]["y"],
                 }
                 # Add all metadata columns
-                for col in color_columns:
+                for col in [
+                    "song_name",
+                    "artist",
+                    "maqam",
+                    "type",
+                    "electric",
+                    "vintage",
+                ]:
                     line_data[col] = vid_df.iloc[i][col]
 
                 lines_data.append(line_data)
@@ -280,91 +305,87 @@ def create_visualization(
     # Create a DataFrame for the lines
     lines_df = pd.DataFrame(lines_data) if lines_data else pd.DataFrame()
 
-    # Create a list to hold all the charts
-    charts = []
+    # Create a transform_calculate to get the color value based on the color_by parameter
+    color_expr = "datum[color_by]"
 
-    # Create a chart for each color column
-    for color_col in color_columns:
-        # Create a selection for this specific chart
-        selection = alt.selection_point(fields=[color_col], bind="legend")
-
-        # Draw lines (only if there are any)
-        if not lines_df.empty:
-            lines = (
-                alt.Chart(lines_df)
-                .transform_filter(show_lines_param)  # Only when toggle is on
-                .mark_rule(opacity=0.5)
-                .encode(
-                    x="x1:Q",
-                    y="y1:Q",
-                    x2="x2:Q",
-                    y2="y2:Q",
-                    color=alt.Color(
-                        f"{color_col}:N",
-                        legend=None,  # No legend for lines
-                    ),
-                )
-                .transform_filter(selection)
-            )
-        else:
-            lines = alt.Chart().mark_rule()  # Empty chart
-
-        # Draw points
-        points = (
-            base.mark_circle(size=100)
+    # Draw lines (only if there are any)
+    if not lines_df.empty:
+        lines = (
+            alt.Chart(lines_df)
+            .transform_filter(show_lines)  # Only when toggle is on
+            .transform_calculate(color_value=color_expr)
+            .mark_rule(opacity=0.5)
             .encode(
-                opacity=alt.condition(selection, alt.value(0.9), alt.value(0.2)),
-                tooltip=["tooltip:N"],
+                x="x1:Q",
+                y="y1:Q",
+                x2="x2:Q",
+                y2="y2:Q",
                 color=alt.Color(
-                    f"{color_col}:N",
-                    title=color_col.capitalize(),
-                    legend=alt.Legend(
-                        orient="right",
-                    ),
+                    "color_value:N",
+                    legend=None,  # No legend for lines
                 ),
             )
-            .add_params(selection, show_lines_param, zoom)
+            .transform_filter(legend_selection)
         )
+    else:
+        lines = alt.Chart().mark_rule()  # Empty chart
 
-        # Draw text labels (on top of points)
-        text = base.mark_text(
-            align="center",
-            baseline="middle",
-            fontSize=8,
-            fontWeight="bold",
-            dy=-10,  # Offset text above the point
-        ).encode(
-            text="chunk_number:Q",
-            color=alt.value("black"),  # Explicitly set text color in encoding
-            opacity=alt.condition(selection, alt.value(1), alt.value(0)),
+    # Draw points
+    points = (
+        base.mark_circle(size=100)
+        .transform_calculate(color_value=color_expr)
+        .encode(
+            opacity=alt.condition(legend_selection, alt.value(0.9), alt.value(0.2)),
+            tooltip=[
+                "song_name:N",
+                "artist:N",
+                "maqam:N",
+                "type:N",
+                "electric:N",
+                "vintage:N",
+                "video_id:N",
+                "chunk_number:Q",
+            ],
+            color=alt.Color(
+                "color_value:N",
+                legend=alt.Legend(
+                    orient="right",
+                    labelLimit=300,
+                    titleFontSize=14,
+                    labelFontSize=12,
+                    symbolSize=100,
+                ),
+            ),
         )
+        .add_params(legend_selection, show_lines)
+    )
 
-        # Combine layers for this color attribute
-        combined_chart = alt.layer(
-            lines,  # Lines at the bottom
-            points,  # Points in the middle
-            text,  # Text on top
-        ).properties(
-            width=700,  # Slightly narrower to leave room for legend
-            height=400,  # Slightly smaller height for each chart
-            title=f"{color_col.capitalize()}",
-        )
+    # Draw text labels
+    text = base.mark_text(
+        align="center",
+        baseline="middle",
+        fontSize=8,
+        fontWeight="bold",
+        dy=-10,  # Offset text above the point
+    ).encode(
+        text="chunk_number:Q",
+        color=alt.value("black"),  # Explicitly set text color
+        opacity=alt.condition(legend_selection, alt.value(1), alt.value(0)),
+    )
 
-        # Add this chart to our list
-        charts.append(combined_chart)
-
-    # Create a vertical concatenation of all charts
+    # Create the final chart
     chart = (
-        alt.vconcat(*charts)
+        alt.layer(lines, points, text)
+        .properties(
+            width=900,
+            height=700,
+            title=f"UMAP Visualization of MAEST {embedding_type.upper()} Embeddings",
+        )
         .configure_view(stroke=None)
         .configure_axis(grid=True, gridOpacity=0.2)
-        .properties(
-            title=f"UMAP Visualization of MAEST {embedding_type.upper()} Embeddings",
-            autosize=alt.AutoSizeParams(type="fit", contains="padding"),
-        )
         .configure_legend(
-            orient="right",  # Place legend on the right
-            labelLimit=300,  # Allow longer labels
+            orient="right",
+            labelLimit=300,
             titleFontSize=14,
             labelFontSize=12,
             symbolSize=100,
