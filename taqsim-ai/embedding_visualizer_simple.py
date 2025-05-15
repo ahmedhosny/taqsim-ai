@@ -117,7 +117,7 @@ def get_metadata_from_csv(video_ids):
                                 # Use empty string if the value is NaN
                                 value = row[col] if pd.notna(row[col]) else "Unknown"
                                 video_metadata[col] = value
-                            
+
                             # Add the original YouTube link to the metadata
                             video_metadata["link"] = url
 
@@ -222,7 +222,15 @@ def create_visualization(
     }
 
     # Add all metadata columns
-    metadata_columns = ["song_name", "artist", "maqam", "type", "electric", "vintage", "link"]
+    metadata_columns = [
+        "song_name",
+        "artist",
+        "maqam",
+        "type",
+        "electric",
+        "vintage",
+        "link",
+    ]
     for column in metadata_columns:
         df_data[column] = [
             metadata_by_video.get(vid, {}).get(column, "Unknown") for vid in video_ids
@@ -260,7 +268,10 @@ def create_visualization(
 
     # Create a dynamic legend selection based on the color_by parameter
     # This will update when the dropdown changes
-    legend_selection = alt.selection_point(bind="legend")
+    # fields=['color_value'] ensures the selection works with the dynamic color field
+    legend_selection = alt.selection_point(
+        fields=["color_value"], bind="legend", name="Legend_Selection"
+    )
 
     # Base chart
     base = (
@@ -318,12 +329,17 @@ def create_visualization(
         # Draw lines with the dynamic color
         lines = (
             lines_chart.transform_filter(show_lines)  # Only when toggle is on
-            .mark_rule(opacity=0.5)
+            .mark_rule()
             .encode(
                 x="x1:Q",
                 y="y1:Q",
                 x2="x2:Q",
                 y2="y2:Q",
+                opacity=alt.condition(
+                    legend_selection,
+                    alt.value(0.6),  # Higher opacity when selected
+                    alt.value(0.1),  # Lower opacity when not selected
+                ),
                 color=alt.Color(
                     "color_value:N",  # Use the calculated field
                     legend=None,  # No legend for lines
@@ -337,7 +353,7 @@ def create_visualization(
     points = (
         base.mark_circle(size=100)
         .encode(
-            opacity=alt.condition(legend_selection, alt.value(0.9), alt.value(0.2)),
+            opacity=alt.condition(legend_selection, alt.value(1.0), alt.value(0.2)),
             tooltip=[
                 "song_name:N",
                 "artist:N",
@@ -364,17 +380,29 @@ def create_visualization(
         .add_params(legend_selection, show_lines)
     )
 
-    # Draw text labels
-    text = base.mark_text(
+    # Create a separate DataFrame for the labels with the same positioning as the circles
+    label_df = df.copy()
+    # Use the same coordinates as the circles (no offset)
+    # We'll position the text directly on the circles
+    
+    # Create a text layer with the separate DataFrame
+    text = alt.Chart(label_df).mark_text(
         align="center",
         baseline="middle",
-        fontSize=8,
-        fontWeight="bold",
-        dy=-10,  # Offset text above the point
+        fontSize=10,
+        fontWeight="bold"
     ).encode(
+        x="x:Q",
+        y="y:Q",  # Use the same y-coordinate as the circles
         text="chunk_number:Q",
-        color=alt.value("black"),  # Explicitly set text color
-        opacity=alt.condition(legend_selection, alt.value(1), alt.value(0.2)),
+        color=alt.value("black"),  # Black text as requested
+        opacity=alt.condition(
+            legend_selection, 
+            alt.value(1), 
+            alt.value(0.1)
+        )
+    ).transform_calculate(
+        color_value=f"datum[{color_by.name}]"  # Add this for selection to work
     )
 
     # Create the final chart
