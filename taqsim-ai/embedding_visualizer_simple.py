@@ -384,25 +384,21 @@ def create_visualization(
     label_df = df.copy()
     # Use the same coordinates as the circles (no offset)
     # We'll position the text directly on the circles
-    
+
     # Create a text layer with the separate DataFrame
-    text = alt.Chart(label_df).mark_text(
-        align="center",
-        baseline="middle",
-        fontSize=10,
-        fontWeight="bold"
-    ).encode(
-        x="x:Q",
-        y="y:Q",  # Use the same y-coordinate as the circles
-        text="chunk_number:Q",
-        color=alt.value("black"),  # Black text as requested
-        opacity=alt.condition(
-            legend_selection, 
-            alt.value(1), 
-            alt.value(0.1)
+    text = (
+        alt.Chart(label_df)
+        .mark_text(align="center", baseline="middle", fontSize=10, fontWeight="bold")
+        .encode(
+            x="x:Q",
+            y="y:Q",  # Use the same y-coordinate as the circles
+            text="chunk_number:Q",
+            color=alt.value("black"),  # Black text as requested
+            opacity=alt.condition(legend_selection, alt.value(1), alt.value(0.1)),
         )
-    ).transform_calculate(
-        color_value=f"datum[{color_by.name}]"  # Add this for selection to work
+        .transform_calculate(
+            color_value=f"datum[{color_by.name}]"  # Add this for selection to work
+        )
     )
 
     # Create the final chart
