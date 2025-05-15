@@ -374,6 +374,7 @@ def create_visualization(
                     titleFontSize=14,
                     labelFontSize=12,
                     symbolSize=100,
+                    symbolLimit=300,
                 ),
             ),
         )
