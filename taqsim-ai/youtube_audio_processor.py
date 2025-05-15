@@ -244,6 +244,7 @@ def process_audio(audio_file, target_sr=16000, chunk_duration=30):
     1. Load and convert to target sample rate
     2. Remove silence from beginning and end
     3. Split into chunks of specified duration
+    4. Skip the last chunk
 
     Args:
         audio_file: Path to the audio file
@@ -251,7 +252,7 @@ def process_audio(audio_file, target_sr=16000, chunk_duration=30):
         chunk_duration: Duration of each chunk in seconds
 
     Returns:
-        List of audio chunks as numpy arrays
+        List of audio chunks as numpy arrays (excluding the last chunk)
     """
     print(f"Processing audio file: {audio_file}")
     try:
@@ -319,7 +320,18 @@ def process_audio(audio_file, target_sr=16000, chunk_duration=30):
 
             chunks.append(chunk)
 
-        print(f"Split audio into {len(chunks)} chunks of {chunk_duration} seconds each")
+        # Skip the last chunk
+        if len(chunks) > 1:
+            original_count = len(chunks)
+            chunks = chunks[:-1]
+            print(
+                f"Split audio into {original_count} chunks and keeping {len(chunks)} chunks of {chunk_duration} seconds each (skipping the last chunk)"
+            )
+        else:
+            print(
+                f"Split audio into {len(chunks)} chunk of {chunk_duration} seconds each (keeping it as there's only one chunk)"
+            )
+
         return chunks
     except Exception as e:
         print(f"Error processing audio: {e}")

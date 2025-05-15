@@ -79,6 +79,7 @@ def get_metadata_from_csv(video_ids):
             "type": "Unknown",
             "electric": "Unknown",
             "vintage": "Unknown",
+            "link": "Unknown",
         }
         for vid in video_ids
     }
@@ -116,6 +117,9 @@ def get_metadata_from_csv(video_ids):
                                 # Use empty string if the value is NaN
                                 value = row[col] if pd.notna(row[col]) else "Unknown"
                                 video_metadata[col] = value
+                            
+                            # Add the original YouTube link to the metadata
+                            video_metadata["link"] = url
 
                             metadata[video_id] = video_metadata
                             print(f"Found metadata for video {video_id}")
@@ -218,7 +222,7 @@ def create_visualization(
     }
 
     # Add all metadata columns
-    metadata_columns = ["song_name", "artist", "maqam", "type", "electric", "vintage"]
+    metadata_columns = ["song_name", "artist", "maqam", "type", "electric", "vintage", "link"]
     for column in metadata_columns:
         df_data[column] = [
             metadata_by_video.get(vid, {}).get(column, "Unknown") for vid in video_ids
@@ -288,6 +292,7 @@ def create_visualization(
                     "type",
                     "electric",
                     "vintage",
+                    "link",
                 ]:
                     line_data[col] = vid_df.iloc[i][col]
 
@@ -340,6 +345,7 @@ def create_visualization(
                 "type:N",
                 "electric:N",
                 "vintage:N",
+                "link:N",
                 "video_id:N",
                 "chunk_number:Q",
             ],
