@@ -238,21 +238,21 @@ def remove_silence(audio, sr, threshold_db=40, min_silence_duration=0.5):
     return trimmed_audio
 
 
-def process_audio(audio_file, target_sr=16000, chunk_duration=30):
+def process_audio(audio_file, target_sr=16000, chunk_duration=30, step_size=1):
     """
     Process audio file:
     1. Load and convert to target sample rate
     2. Remove silence from beginning and end
-    3. Split into chunks of specified duration
-    4. Skip the last chunk
+    3. Split into overlapping chunks of specified duration with step size
 
     Args:
         audio_file: Path to the audio file
         target_sr: Target sample rate in Hz
         chunk_duration: Duration of each chunk in seconds
+        step_size: Step size between consecutive chunks in seconds
 
     Returns:
-        List of audio chunks as numpy arrays (excluding the last chunk)
+        List of audio chunks as numpy arrays
     """
     print(f"Processing audio file: {audio_file}")
     try:
@@ -306,13 +306,21 @@ def process_audio(audio_file, target_sr=16000, chunk_duration=30):
             f"Successfully loaded audio: {len(audio) / target_sr:.2f} seconds at {target_sr}Hz"
         )
 
-        # Calculate chunk size in samples
+        # Calculate chunk size and step size in samples
         chunk_size = chunk_duration * target_sr
+        step_samples = step_size * target_sr
 
-        # Split audio into chunks
+        # Calculate total number of chunks
+        total_chunks = max(1, 1 + (len(audio) - chunk_size) // step_samples)
+
+        # Split audio into overlapping chunks
         chunks = []
-        for i in range(0, len(audio), chunk_size):
-            chunk = audio[i : i + chunk_size]
+        for i in range(total_chunks):
+            start_idx = i * step_samples
+            end_idx = min(start_idx + chunk_size, len(audio))
+
+            # Extract the chunk
+            chunk = audio[start_idx:end_idx]
 
             # If chunk is shorter than chunk_size, pad with zeros
             if len(chunk) < chunk_size:
@@ -320,17 +328,9 @@ def process_audio(audio_file, target_sr=16000, chunk_duration=30):
 
             chunks.append(chunk)
 
-        # Skip the last chunk
-        if len(chunks) > 1:
-            original_count = len(chunks)
-            chunks = chunks[:-1]
-            print(
-                f"Split audio into {original_count} chunks and keeping {len(chunks)} chunks of {chunk_duration} seconds each (skipping the last chunk)"
-            )
-        else:
-            print(
-                f"Split audio into {len(chunks)} chunk of {chunk_duration} seconds each (keeping it as there's only one chunk)"
-            )
+        print(
+            f"Split audio into {len(chunks)} overlapping chunks of {chunk_duration} seconds each (step size: {step_size}s)"
+        )
 
         return chunks
     except Exception as e:
@@ -561,7 +561,7 @@ def process_youtube_link(youtube_url, extract_embeddings=True):
         return None
 
     # Process audio and remove silence
-    chunks = process_audio(audio_file)
+    chunks = process_audio(audio_file, step_size=1)
     if not chunks:
         return None
 
@@ -649,7 +649,7 @@ def main():
 
                 processed = False
                 # Process each row (or just the first if args.all is False)
-                for index, row in df.iterrows():
+                for index, row in df.head(n=10).iterrows():
                     url = row["link"]  # URL is in the 'link' column
                     song_info = (
                         f" - {row['song_name']}" if "song_name" in df.columns else ""
