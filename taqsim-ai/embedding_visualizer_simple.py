@@ -266,6 +266,13 @@ def create_visualization(
         bind=alt.binding_checkbox(name="Show connecting lines "),
     )
 
+    # Create a toggle for chunk numbers
+    show_numbers = alt.param(
+        name="show_numbers",
+        value=True,
+        bind=alt.binding_checkbox(name="Show chunk numbers "),
+    )
+
     # Create a dynamic legend selection based on the color_by parameter
     # This will update when the dropdown changes
     # fields=['color_value'] ensures the selection works with the dynamic color field
@@ -378,7 +385,7 @@ def create_visualization(
                 ),
             ),
         )
-        .add_params(legend_selection, show_lines)
+        .add_params(legend_selection, show_lines, show_numbers)
     )
 
     # Create a separate DataFrame for the labels with the same positioning as the circles
@@ -387,19 +394,22 @@ def create_visualization(
     # We'll position the text directly on the circles
 
     # Create a text layer with the separate DataFrame
+    # Create a text layer that will be conditionally displayed based on the show_numbers parameter
     text = (
         alt.Chart(label_df)
-        .mark_text(align="center", baseline="middle", fontSize=10, fontWeight="bold")
+        .mark_text(align="center", baseline="middle", fontSize=6, fontWeight="bold")
         .encode(
             x="x:Q",
             y="y:Q",  # Use the same y-coordinate as the circles
             text="chunk_number:Q",
             color=alt.value("black"),  # Black text as requested
-            opacity=alt.condition(legend_selection, alt.value(1), alt.value(0.1)),
+            opacity=alt.condition(legend_selection, alt.value(1), alt.value(0)),
         )
         .transform_calculate(
             color_value=f"datum[{color_by.name}]"  # Add this for selection to work
         )
+        # Only show this layer when show_numbers is true
+        .transform_filter(show_numbers)
     )
 
     # Create the final chart
