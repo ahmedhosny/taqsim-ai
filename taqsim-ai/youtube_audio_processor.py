@@ -649,8 +649,8 @@ def main():
 
                 processed = False
                 # Process each row (or just the first if args.all is False)
-                for index, row in df.head(n=10).iterrows():
-                    url = row["link"]  # URL is in the 'link' column
+                for index, row in df.iterrows():
+                    url = row["link"]
                     song_info = (
                         f" - {row['song_name']}" if "song_name" in df.columns else ""
                     )

@@ -345,7 +345,7 @@ def create_visualization(
                 opacity=alt.condition(
                     legend_selection,
                     alt.value(0.6),  # Higher opacity when selected
-                    alt.value(0.1),  # Lower opacity when not selected
+                    alt.value(0.01),  # Lower opacity when not selected
                 ),
                 color=alt.Color(
                     "color_value:N",  # Use the calculated field
@@ -360,7 +360,7 @@ def create_visualization(
     points = (
         base.mark_circle(size=100)
         .encode(
-            opacity=alt.condition(legend_selection, alt.value(1.0), alt.value(0.2)),
+            opacity=alt.condition(legend_selection, alt.value(1.0), alt.value(0.05)),
             tooltip=[
                 "song_name:N",
                 "artist:N",
