@@ -16,8 +16,10 @@ from pathlib import Path
 import librosa
 import numpy as np
 import pandas as pd
-import yt_dlp
 from transformers import pipeline
+
+# Import YouTube downloader functionality for finding files
+from youtube_downloader import extract_video_id
 
 
 # Create necessary directories
@@ -42,145 +44,7 @@ def create_directories():
     return audio_chunks_dir, downloads_dir, classifications_dir, embeddings_dir
 
 
-def download_youtube_audio(youtube_url, output_path=None):
-    """
-    Download audio from a YouTube video using yt-dlp.
-    If the video is already downloaded, it will not download it again.
-
-    Args:
-        youtube_url: URL of the YouTube video
-        output_path: Directory to save the downloaded audio. If None, uses data/downloads
-
-    Returns:
-        Path to the downloaded audio file
-    """
-    print(f"Processing YouTube URL: {youtube_url}")
-
-    # Use the downloads directory if no output path is specified
-    if output_path is None:
-        _, output_path, _, _ = create_directories()
-
-    try:
-        # Extract video ID for naming the output file
-        try:
-            video_id = youtube_url.split("v=")[1]
-            if "&" in video_id:
-                video_id = video_id.split("&")[0]
-        except IndexError:
-            # Fallback if URL format is unexpected
-            import uuid
-
-            video_id = str(uuid.uuid4())[:8]
-            print(
-                f"Could not extract video ID from URL, using generated ID: {video_id}"
-            )
-
-        # Check if the video is already downloaded
-        for file in os.listdir(output_path):
-            if video_id in file:
-                existing_file = os.path.join(output_path, file)
-                print(f"Video already downloaded: {existing_file}")
-                return existing_file
-
-        # Check for ffmpeg availability
-        ffmpeg_available = False
-        ffmpeg_path = None
-
-        try:
-            import shutil
-
-            # Try to find ffmpeg in PATH
-            ffmpeg_path = shutil.which("ffmpeg")
-            if ffmpeg_path:
-                print(f"Found ffmpeg at: {ffmpeg_path}")
-                ffmpeg_available = True
-            else:
-                # Try common locations
-                common_paths = [
-                    "/usr/bin/ffmpeg",
-                    "/usr/local/bin/ffmpeg",
-                    "/opt/homebrew/bin/ffmpeg",
-                ]
-                for path in common_paths:
-                    if os.path.exists(path) and os.access(path, os.X_OK):
-                        ffmpeg_path = path
-                        ffmpeg_available = True
-                        print(f"Found ffmpeg at: {ffmpeg_path}")
-                        break
-        except Exception as e:
-            print(f"Error checking for ffmpeg: {e}")
-
-        if not ffmpeg_available:
-            print("WARNING: ffmpeg not found. Audio processing may be limited.")
-            print("Consider installing ffmpeg: brew install ffmpeg")
-
-        # Set up yt-dlp options
-        ydl_opts = {
-            "format": "bestaudio/best",
-            "outtmpl": os.path.join(output_path, f"%(title)s_{video_id}.%(ext)s"),
-            "quiet": False,
-            "no_warnings": False,
-            "ignoreerrors": False,
-        }
-
-        # Add post-processing if ffmpeg is available
-        if ffmpeg_available:
-            # Force extraction to wav format which librosa can handle better
-            ydl_opts["postprocessors"] = [
-                {
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "wav",  # Use wav instead of mp3 for better compatibility
-                    "preferredquality": "192",
-                }
-            ]
-            # If we found a specific ffmpeg path, use it
-            if ffmpeg_path:
-                ydl_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_path)
-
-        print("Initializing YouTube downloader...")
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            print("Extracting video information...")
-            info = ydl.extract_info(youtube_url, download=False)
-
-            if not info:
-                raise Exception("Could not extract video information")
-
-            print(f"Downloading: {info.get('title', 'Unknown title')}")
-            ydl.download([youtube_url])
-
-            # Get the output filename
-            title = info.get("title", "Unknown")
-            safe_title = "".join([c if c.isalnum() else "_" for c in title])
-
-            # Check for the downloaded file
-            found_file = None
-
-            # First check for the expected filename with wav extension if ffmpeg was available
-            if ffmpeg_available:
-                expected_file = os.path.join(
-                    output_path, f"{safe_title}_{video_id}.wav"
-                )
-                if os.path.exists(expected_file):
-                    found_file = expected_file
-
-            # If not found, search for any file with the video_id in the name
-            if not found_file:
-                for file in os.listdir(output_path):
-                    if video_id in file:
-                        found_file = os.path.join(output_path, file)
-                        break
-
-            if found_file:
-                print(f"Downloaded to: {found_file}")
-                return found_file
-
-            raise Exception(f"Downloaded file not found in {output_path}")
-
-    except Exception as e:
-        print(f"Error downloading YouTube video: {e}")
-        print("This could be due to YouTube API changes or restrictions.")
-        print("Check if the video is region-restricted or age-restricted")
-        return None
+# Note: download_youtube_audio is now imported from youtube_downloader module
 
 
 def remove_silence(audio, sr, threshold_db=40, min_silence_duration=0.5):
@@ -538,9 +402,36 @@ def save_results_to_csv(results, output_file="classification_results.csv"):
     )
 
 
+def find_downloaded_file(youtube_url, downloads_dir):
+    """
+    Find a previously downloaded file for a YouTube URL.
+
+    Args:
+        youtube_url: URL of the YouTube video
+        downloads_dir: Directory to look for the downloaded file
+
+    Returns:
+        Path to the downloaded file if found, None otherwise
+    """
+    # Extract video ID for finding the file
+    video_id = extract_video_id(youtube_url)
+
+    # Check if the video is already downloaded
+    for file in os.listdir(downloads_dir):
+        if video_id in file:
+            existing_file = os.path.join(downloads_dir, file)
+            print(f"Found downloaded file: {existing_file}")
+            return existing_file
+
+    print(f"No downloaded file found for video ID: {video_id}")
+    print("Please run youtube_downloader.py first to download the file.")
+    return None
+
+
 def process_youtube_link(youtube_url, extract_embeddings=True):
     """
-    Process a YouTube link: download, process, and classify.
+    Process a YouTube link: find downloaded file, process, and classify.
+    Assumes the file has already been downloaded using youtube_downloader.py.
 
     Args:
         youtube_url: URL of the YouTube video
@@ -555,8 +446,8 @@ def process_youtube_link(youtube_url, extract_embeddings=True):
         create_directories()
     )
 
-    # Download audio
-    audio_file = download_youtube_audio(youtube_url, output_path=downloads_dir)
+    # Find the downloaded audio file
+    audio_file = find_downloaded_file(youtube_url, downloads_dir)
     if not audio_file:
         return None
 
@@ -566,14 +457,7 @@ def process_youtube_link(youtube_url, extract_embeddings=True):
         return None
 
     # Extract video ID for naming files
-    try:
-        video_id = youtube_url.split("v=")[1]
-        if "&" in video_id:
-            video_id = video_id.split("&")[0]
-    except IndexError:
-        import uuid
-
-        video_id = str(uuid.uuid4())[:8]
+    video_id = extract_video_id(youtube_url)
 
     # Save chunks
     save_audio_chunks(
@@ -620,31 +504,54 @@ def main():
     parser.add_argument(
         "--all", action="store_true", help="Process all URLs in the CSV file"
     )
+    parser.add_argument(
+        "--no-embeddings", action="store_true", help="Skip embedding extraction"
+    )
 
     args = parser.parse_args()
+    extract_embeddings = not args.no_embeddings
 
     if args.url:
-        process_youtube_link(args.url)
+        print("\nProcessing a single YouTube URL...")
+        process_youtube_link(args.url, extract_embeddings=extract_embeddings)
     elif args.csv:
+        print(f"\nProcessing YouTube URLs from CSV file: {args.csv}")
         # Use pandas to read the CSV file
         df = pd.read_csv(args.csv)
+
+        if df.empty:
+            print("CSV file is empty.")
+            return
+
+        # Check if 'link' column exists
+        if "link" not in df.columns:
+            print("Error: CSV file must contain a 'link' column with YouTube URLs.")
+            return
 
         # Process each row
         for index, row in df.iterrows():
             url = row["link"]  # URL is in the 'link' column
             song_info = f" - {row['song_name']}" if "song_name" in df.columns else ""
             print(f"\nProcessing YouTube URL: {url}{song_info}")
-            process_youtube_link(url)
+            process_youtube_link(url, extract_embeddings=extract_embeddings)
     else:
         # Use URLs from the CSV file
         csv_path = Path(__file__).parent.parent / "data" / "taqsim_ai.csv"
         if csv_path.exists():
+            print(f"\nUsing default CSV file: {csv_path}")
             try:
                 # Use pandas to read the CSV file
                 df = pd.read_csv(csv_path)
 
                 if df.empty:
                     print("CSV file is empty.")
+                    return
+
+                # Check if 'link' column exists
+                if "link" not in df.columns:
+                    print(
+                        "Error: CSV file must contain a 'link' column with YouTube URLs."
+                    )
                     return
 
                 processed = False
@@ -655,7 +562,7 @@ def main():
                         f" - {row['song_name']}" if "song_name" in df.columns else ""
                     )
                     print(f"\nProcessing YouTube URL: {url}{song_info}")
-                    process_youtube_link(url)
+                    process_youtube_link(url, extract_embeddings=extract_embeddings)
                     processed = True
                     if not args.all:
                         break  # Process only the first URL by default
@@ -668,6 +575,15 @@ def main():
         else:
             print("No YouTube URL provided and no CSV file found.")
             print("Please provide a YouTube URL with --url or a CSV file with --csv")
+            print(
+                "\nFirst run youtube_downloader.py to download the audio files, then run this script to process them."
+            )
+            print(
+                "Example: python youtube_downloader.py --csv data/taqsim_ai.csv --all"
+            )
+            print(
+                "Then: python youtube_audio_processor.py --csv data/taqsim_ai.csv --all"
+            )
 
 
 if __name__ == "__main__":
