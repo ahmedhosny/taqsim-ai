@@ -18,9 +18,6 @@ import numpy as np
 import pandas as pd
 from transformers import pipeline
 
-# Import YouTube downloader functionality for finding files
-from youtube_downloader import extract_video_id
-
 
 # Create necessary directories
 def create_directories():
@@ -402,33 +399,40 @@ def save_results_to_csv(results, output_file="classification_results.csv"):
     )
 
 
-def find_downloaded_file(youtube_url, downloads_dir):
+def find_downloaded_file(youtube_url, downloads_dir, uuid):
     """
-    Find a previously downloaded file for a YouTube URL.
+    Find a previously downloaded file for a YouTube URL using UUID.
 
     Args:
-        youtube_url: URL of the YouTube video
+        youtube_url: URL of the YouTube video (for reference only)
         downloads_dir: Directory to look for the downloaded file
+        uuid: Required unique identifier for the file
 
     Returns:
         Path to the downloaded file if found, None otherwise
-    """
-    # Extract video ID for finding the file
-    video_id = extract_video_id(youtube_url)
 
-    # Check if the video is already downloaded
+    Raises:
+        ValueError: If uuid is not provided
+    """
+    # Require UUID parameter
+    if not uuid:
+        raise ValueError(
+            "UUID is required for finding files. Cannot proceed without a UUID."
+        )
+
+    # Check if the file is already downloaded
     for file in os.listdir(downloads_dir):
-        if video_id in file:
+        if uuid in file:
             existing_file = os.path.join(downloads_dir, file)
             print(f"Found downloaded file: {existing_file}")
             return existing_file
 
-    print(f"No downloaded file found for video ID: {video_id}")
+    print(f"No downloaded file found for UUID: {uuid}")
     print("Please run youtube_downloader.py first to download the file.")
     return None
 
 
-def process_youtube_link(youtube_url, extract_embeddings=True):
+def process_youtube_link(youtube_url, extract_embeddings=True, uuid=None):
     """
     Process a YouTube link: find downloaded file, process, and classify.
     Assumes the file has already been downloaded using youtube_downloader.py.
@@ -436,18 +440,28 @@ def process_youtube_link(youtube_url, extract_embeddings=True):
     Args:
         youtube_url: URL of the YouTube video
         extract_embeddings: Whether to extract embeddings from the model
+        uuid: Required unique identifier for the file
 
     Returns:
         Tuple of (classification results, embeddings_dict) if extract_embeddings is True,
         otherwise just classification results
+
+    Raises:
+        ValueError: If uuid is not provided
     """
+    # Require UUID parameter
+    if not uuid:
+        raise ValueError(
+            "UUID is required for processing. Cannot proceed without a UUID."
+        )
+
     # Create directories and get paths
     audio_chunks_dir, downloads_dir, classifications_dir, embeddings_dir = (
         create_directories()
     )
 
-    # Find the downloaded audio file
-    audio_file = find_downloaded_file(youtube_url, downloads_dir)
+    # Find the downloaded audio file using UUID
+    audio_file = find_downloaded_file(youtube_url, downloads_dir, uuid)
     if not audio_file:
         return None
 
@@ -456,12 +470,12 @@ def process_youtube_link(youtube_url, extract_embeddings=True):
     if not chunks:
         return None
 
-    # Extract video ID for naming files
-    video_id = extract_video_id(youtube_url)
+    # Use the UUID for naming files
+    file_id = uuid
 
     # Save chunks
     save_audio_chunks(
-        chunks, output_dir=audio_chunks_dir, base_filename=f"youtube_{video_id}"
+        chunks, output_dir=audio_chunks_dir, base_filename=f"youtube_{file_id}"
     )
 
     # Classify chunks and optionally extract embeddings
@@ -476,7 +490,7 @@ def process_youtube_link(youtube_url, extract_embeddings=True):
 
         # Save embeddings to file
         embeddings_file = os.path.join(
-            embeddings_dir, f"embeddings_youtube_{video_id}.npz"
+            embeddings_dir, f"embeddings_youtube_{file_id}.npz"
         )
         save_embeddings_to_file(embeddings_dict, output_file=embeddings_file)
         print(f"Embeddings saved to: {embeddings_file}")
@@ -485,7 +499,7 @@ def process_youtube_link(youtube_url, extract_embeddings=True):
 
     # Save results to genre_classifications directory
     results_file = os.path.join(
-        classifications_dir, f"classification_youtube_{video_id}.csv"
+        classifications_dir, f"classification_youtube_{file_id}.csv"
     )
     save_results_to_csv(results, output_file=results_file)
 
@@ -494,87 +508,118 @@ def process_youtube_link(youtube_url, extract_embeddings=True):
     return results
 
 
-def main():
-    """Main function to process YouTube links from command line or CSV file."""
-    parser = argparse.ArgumentParser(
-        description="Process YouTube videos for audio classification"
-    )
-    parser.add_argument("--url", help="YouTube URL to process")
-    parser.add_argument("--csv", help="CSV file containing YouTube URLs")
-    parser.add_argument(
-        "--all", action="store_true", help="Process all URLs in the CSV file"
-    )
-    parser.add_argument(
-        "--no-embeddings", action="store_true", help="Skip embedding extraction"
-    )
+def process_csv_file(csv_file, extract_embeddings=True):
+    """
+    Process a CSV file containing YouTube URLs and process each URL.
 
-    args = parser.parse_args()
-    extract_embeddings = not args.no_embeddings
+    Args:
+        csv_file: Path to the CSV file containing YouTube URLs
+        extract_embeddings: Whether to extract embeddings from the model
 
-    if args.url:
-        print("\nProcessing a single YouTube URL...")
-        process_youtube_link(args.url, extract_embeddings=extract_embeddings)
-    elif args.csv:
-        print(f"\nProcessing YouTube URLs from CSV file: {args.csv}")
+    Returns:
+        None
+    """
+    try:
         # Use pandas to read the CSV file
-        df = pd.read_csv(args.csv)
+        df = pd.read_csv(csv_file)
 
         if df.empty:
             print("CSV file is empty.")
             return
 
-        # Check if 'link' column exists
+        # Check if required columns exist
         if "link" not in df.columns:
             print("Error: CSV file must contain a 'link' column with YouTube URLs.")
             return
 
+        if "uuid" not in df.columns:
+            print(
+                "Error: CSV file must contain a 'uuid' column with unique identifiers."
+            )
+            return
+
         # Process each row
         for index, row in df.iterrows():
-            url = row["link"]  # URL is in the 'link' column
-            song_info = f" - {row['song_name']}" if "song_name" in df.columns else ""
-            print(f"\nProcessing YouTube URL: {url}{song_info}")
-            process_youtube_link(url, extract_embeddings=extract_embeddings)
-    else:
-        # Use URLs from the CSV file
-        csv_path = Path(__file__).parent.parent / "data" / "taqsim_ai.csv"
-        if csv_path.exists():
-            print(f"\nUsing default CSV file: {csv_path}")
             try:
-                # Use pandas to read the CSV file
-                df = pd.read_csv(csv_path)
+                url = row["link"]
+                uuid = row["uuid"]
 
-                if df.empty:
-                    print("CSV file is empty.")
-                    return
+                # Skip rows with missing UUID
+                if pd.isna(uuid) or not uuid:
+                    print(f"\nSkipping row {index}: Missing UUID for URL {url}")
+                    continue
 
-                # Check if 'link' column exists
-                if "link" not in df.columns:
-                    print(
-                        "Error: CSV file must contain a 'link' column with YouTube URLs."
-                    )
-                    return
+                song_info = (
+                    f" - {row['song_name']}"
+                    if "song_name" in df.columns and not pd.isna(row["song_name"])
+                    else ""
+                )
+                print(f"\nProcessing YouTube URL: {url}{song_info} (UUID: {uuid})")
 
-                processed = False
-                # Process each row (or just the first if args.all is False)
-                for index, row in df.iterrows():
-                    url = row["link"]
-                    song_info = (
-                        f" - {row['song_name']}" if "song_name" in df.columns else ""
-                    )
-                    print(f"\nProcessing YouTube URL: {url}{song_info}")
-                    process_youtube_link(url, extract_embeddings=extract_embeddings)
-                    processed = True
-                    if not args.all:
-                        break  # Process only the first URL by default
+                process_youtube_link(
+                    url, extract_embeddings=extract_embeddings, uuid=uuid
+                )
+            except ValueError as e:
+                print(f"Error processing row {index}: {e}")
+                continue
+    except Exception as e:
+        print(f"Error processing CSV file: {e}")
 
-                if not processed:
-                    print("No valid YouTube URLs found in the CSV file.")
-            except Exception as e:
-                print(f"Error reading CSV file: {e}")
-                return
+
+def main():
+    """
+    Main function to process YouTube URLs from command line or CSV file.
+    """
+    parser = argparse.ArgumentParser(
+        description="Process YouTube URLs for audio classification."
+    )
+    parser.add_argument(
+        "--url",
+        help="YouTube URL to process (requires --uuid parameter)",
+    )
+    parser.add_argument(
+        "--uuid",
+        help="UUID to use for the file (required when using --url)",
+    )
+    parser.add_argument(
+        "--csv",
+        help="Path to CSV file containing YouTube URLs and UUIDs",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Process all URLs in the CSV file (default: only first URL)",
+    )
+    parser.add_argument(
+        "--no-embeddings",
+        action="store_true",
+        help="Skip extracting embeddings (faster processing)",
+    )
+    args = parser.parse_args()
+    extract_embeddings = not args.no_embeddings
+
+    if args.url:
+        if not args.uuid:
+            print("Error: --uuid parameter is required when using --url")
+            return
+        print(f"\nProcessing YouTube URL: {args.url} (UUID: {args.uuid})")
+        process_youtube_link(
+            args.url, extract_embeddings=extract_embeddings, uuid=args.uuid
+        )
+    elif args.csv:
+        print(f"\nProcessing YouTube URLs from CSV file: {args.csv}")
+        process_csv_file(args.csv, extract_embeddings=extract_embeddings)
+    else:
+        # Use default CSV file
+        csv_path = Path(__file__).parent.parent / "data" / "taqsim_ai.csv"
+        if os.path.exists(csv_path):
+            print(f"\nUsing default CSV file: {csv_path}")
+            process_csv_file(csv_path, extract_embeddings=extract_embeddings)
         else:
-            print("No YouTube URL provided and no CSV file found.")
-            print("Please provide a YouTube URL with --url or a CSV file with --csv")
+            print(f"Error: Default CSV file not found at {csv_path}")
+            print(
+                "Please specify a CSV file with --csv or provide a URL with --url and --uuid"
+            )
             print(
                 "\nFirst run youtube_downloader.py to download the audio files, then run this script to process them."
             )

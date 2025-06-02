@@ -37,30 +37,6 @@ def create_download_directory(output_path=None):
     return output_path
 
 
-def extract_video_id(youtube_url):
-    """
-    Extract video ID from a YouTube URL.
-
-    Args:
-        youtube_url: URL of the YouTube video
-
-    Returns:
-        Video ID as a string
-    """
-    try:
-        video_id = youtube_url.split("v=")[1]
-        if "&" in video_id:
-            video_id = video_id.split("&")[0]
-        return video_id
-    except IndexError:
-        # Fallback if URL format is unexpected
-        import uuid
-
-        video_id = str(uuid.uuid4())[:8]
-        print(f"Could not extract video ID from URL, using generated ID: {video_id}")
-        return video_id
-
-
 def check_ffmpeg_availability():
     """
     Check if ffmpeg is available on the system.
@@ -102,7 +78,7 @@ def check_ffmpeg_availability():
     return ffmpeg_available, ffmpeg_path
 
 
-def download_youtube_audio(youtube_url, output_path=None):
+def download_youtube_audio(youtube_url, output_path=None, uuid=None):
     """
     Download audio from a YouTube video using yt-dlp.
     If the video is already downloaded, it will not download it again.
@@ -110,34 +86,41 @@ def download_youtube_audio(youtube_url, output_path=None):
     Args:
         youtube_url: URL of the YouTube video
         output_path: Directory to save the downloaded audio. If None, uses data/downloads
+        uuid: Required unique identifier for the file. Will be used for naming the output file.
 
     Returns:
         Path to the downloaded audio file
+
+    Raises:
+        ValueError: If uuid is not provided
     """
-    print(f"Processing YouTube URL: {youtube_url}")
+    # Require UUID parameter
+    if not uuid:
+        raise ValueError(
+            "UUID is required for downloading. Cannot proceed without a UUID."
+        )
+
+    print(f"Processing YouTube URL: {youtube_url} with UUID: {uuid}")
 
     # Use the downloads directory if no output path is specified
     if output_path is None:
         output_path = create_download_directory()
 
     try:
-        # Extract video ID for naming the output file
-        video_id = extract_video_id(youtube_url)
-
-        # Check if the video is already downloaded
+        # Check if the file is already downloaded
         for file in os.listdir(output_path):
-            if video_id in file:
+            if uuid in file:
                 existing_file = os.path.join(output_path, file)
-                print(f"Video already downloaded: {existing_file}")
+                print(f"File already downloaded: {existing_file}")
                 return existing_file
 
         # Check for ffmpeg availability
         ffmpeg_available, ffmpeg_path = check_ffmpeg_availability()
 
-        # Set up yt-dlp options
+        # Set up yt-dlp options with UUID for naming
         ydl_opts = {
             "format": "bestaudio/best",
-            "outtmpl": os.path.join(output_path, f"%(title)s_{video_id}.%(ext)s"),
+            "outtmpl": os.path.join(output_path, f"{uuid}.%(ext)s"),
             "quiet": False,
             "no_warnings": False,
             "ignoreerrors": False,
@@ -168,25 +151,19 @@ def download_youtube_audio(youtube_url, output_path=None):
             print(f"Downloading: {info.get('title', 'Unknown title')}")
             ydl.download([youtube_url])
 
-            # Get the output filename
-            title = info.get("title", "Unknown")
-            safe_title = "".join([c if c.isalnum() else "_" for c in title])
-
             # Check for the downloaded file
             found_file = None
 
-            # First check for the expected filename with wav extension if ffmpeg was available
+            # Check for the expected filename with wav extension if ffmpeg was available
             if ffmpeg_available:
-                expected_file = os.path.join(
-                    output_path, f"{safe_title}_{video_id}.wav"
-                )
+                expected_file = os.path.join(output_path, f"{uuid}.wav")
                 if os.path.exists(expected_file):
                     found_file = expected_file
 
-            # If not found, search for any file with the video_id in the name
+            # If not found, search for any file with the UUID in the name
             if not found_file:
                 for file in os.listdir(output_path):
-                    if video_id in file:
+                    if uuid in file:
                         found_file = os.path.join(output_path, file)
                         break
 
@@ -228,21 +205,44 @@ def process_csv_for_downloads(csv_path, output_path=None, process_all=True):
             print("CSV file is empty.")
             return downloaded_files
 
-        # Check if 'link' column exists
+        # Check if required columns exist
         if "link" not in df.columns:
             print("Error: CSV file must contain a 'link' column with YouTube URLs.")
             return downloaded_files
 
+        if "uuid" not in df.columns:
+            print(
+                "Error: CSV file must contain a 'uuid' column with unique identifiers."
+            )
+            return downloaded_files
+
         # Process each row (or just the first if process_all is False)
         for index, row in df.iterrows():
-            url = row["link"]
-            song_info = f" - {row['song_name']}" if "song_name" in df.columns else ""
-            print(f"\nProcessing YouTube URL: {url}{song_info}")
+            try:
+                url = row["link"]
+                uuid = row["uuid"]
 
-            # Download the audio
-            audio_file = download_youtube_audio(url, output_path=output_path)
-            if audio_file:
-                downloaded_files.append(audio_file)
+                # Skip rows with missing UUID
+                if pd.isna(uuid) or not uuid:
+                    print(f"\nSkipping row {index}: Missing UUID for URL {url}")
+                    continue
+
+                song_info = (
+                    f" - {row['song_name']}"
+                    if "song_name" in df.columns and not pd.isna(row["song_name"])
+                    else ""
+                )
+                print(f"\nProcessing YouTube URL: {url}{song_info} (UUID: {uuid})")
+
+                # Download the audio using UUID
+                audio_file = download_youtube_audio(
+                    url, output_path=output_path, uuid=uuid
+                )
+                if audio_file:
+                    downloaded_files.append(audio_file)
+            except ValueError as e:
+                print(f"Error processing row {index}: {e}")
+                continue
 
             if not process_all:
                 break  # Process only the first URL if process_all is False
