@@ -519,14 +519,12 @@ def create_embedding_visualization(
                     f"{color_selection}:N",
                     legend=None,  # Hide legend for lines
                 ),
-                opacity=alt.condition(legend_selection, alt.value(0.7), alt.value(0.1)) # Conditional opacity for lines
+                opacity=alt.condition(
+                    legend_selection, alt.value(0.7), alt.value(0.1)
+                ),  # Conditional opacity for lines
             )
-            .add_selection(
-                legend_selection
-            )
+            .add_selection(legend_selection)
         )
-
-
 
     # Create the points layer
     points = (
@@ -555,14 +553,14 @@ def create_embedding_visualization(
     # Create the text layer for chunk numbers if requested
     text = None
     if show_chunk_numbers:
-        text = base.mark_text(
-            align="center", baseline="middle", dy=-10, fontSize=10
-        ).encode(
-            text="chunk_number:N",
-            color=alt.value("black"),
-            opacity=alt.condition(legend_selection, alt.value(1.0), alt.value(0.2))
-        ).add_selection(
-            legend_selection
+        text = (
+            base.mark_text(align="center", baseline="middle", dy=-10, fontSize=10)
+            .encode(
+                text="chunk_number:N",
+                color=alt.value("black"),
+                opacity=alt.condition(legend_selection, alt.value(1.0), alt.value(0.2)),
+            )
+            .add_selection(legend_selection)
         )
 
     # Combine the layers
