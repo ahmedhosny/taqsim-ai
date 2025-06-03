@@ -139,12 +139,14 @@ def chunk_audio_file(
     """
     Process a single audio file to create non-overlapping chunks of fixed duration.
     The last chunk will be padded with silence if needed.
+    If chunks already exist for this UUID, they will be reused instead of re-chunking.
 
     Args:
         input_file: Path to the input audio file
         output_dir: Directory to save the chunks (if None, will use default)
         chunk_duration: Duration of each chunk in seconds
         target_sr: Target sample rate in Hz
+        uuid: Unique identifier for the audio file
 
     Returns:
         List of paths to the saved chunk files, or empty list on failure
@@ -153,6 +155,28 @@ def chunk_audio_file(
         # Create output directory if needed
         if output_dir is None:
             output_dir = create_chunks_directory()
+
+        # Check if chunks already exist for this UUID
+        if uuid:
+            existing_chunks = []
+
+            # List all files in the output directory that match our UUID pattern
+            for filename in os.listdir(output_dir):
+                # Look for files with format: {uuid}_{chunk_number}_{starting_second}_{end_second}.wav
+                if filename.startswith(f"{uuid}_") and filename.endswith(".wav"):
+                    chunk_path = os.path.join(output_dir, filename)
+                    existing_chunks.append(chunk_path)
+
+            # If chunks already exist, return them
+            if existing_chunks:
+                existing_chunks.sort()  # Sort to ensure consistent order
+                print(
+                    f"Found {len(existing_chunks)} existing chunks for UUID {uuid}, reusing them"
+                )
+                return (
+                    existing_chunks,
+                    True,
+                )  # Second value indicates chunks were reused
 
         # Process audio into chunks
         chunks = process_audio_into_chunks(
@@ -172,8 +196,8 @@ def chunk_audio_file(
             chunk_duration=chunk_duration,
         )
 
-        return chunk_paths
+        return chunk_paths, False  # False indicates chunks were newly created
     except Exception as e:
         print(f"Error chunking audio file: {e}")
         traceback.print_exc()
-        return []
+        return [], False  # Empty list with False on error
