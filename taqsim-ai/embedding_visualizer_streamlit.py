@@ -639,7 +639,9 @@ def embedding_visualizer_ui():
     # This ensures that on the first run of a new session, it takes the global default (False).
     # The global SHOW_VERBOSE_INFO (defined at the top of the script) is used as this default.
     if "show_verbose_info_checkbox_val" not in st.session_state:
-        st.session_state.show_verbose_info_checkbox_val = SHOW_VERBOSE_INFO # Uses the global SHOW_VERBOSE_INFO
+        st.session_state.show_verbose_info_checkbox_val = (
+            SHOW_VERBOSE_INFO  # Uses the global SHOW_VERBOSE_INFO
+        )
 
     # Synchronize the function-scoped SHOW_VERBOSE_INFO with the session state.
     # On a fresh session, this will be the default. On refreshes, it will be the persisted value.
@@ -800,9 +802,9 @@ def embedding_visualizer_ui():
     st.sidebar.checkbox(
         "Show Detailed Info Messages",
         key="show_verbose_info_checkbox_val",  # Session state (initialized above or persisted) drives the value
-        help="Toggle the display of detailed informational messages during processing."
+        help="Toggle the display of detailed informational messages during processing.",
     )
-    
+
     # After the checkbox widget, update SHOW_VERBOSE_INFO from session state.
     # This ensures that if the user interacted with the checkbox, that state is used
     # for the rest of this script run.
@@ -831,7 +833,6 @@ def embedding_visualizer_ui():
 
             if chart:
                 chart_placeholder.altair_chart(chart, use_container_width=True)
-
 
 
 if __name__ == "__main__":
