@@ -9,7 +9,6 @@ This script provides functions to:
 
 import glob
 import os
-import re
 
 import altair as alt
 import numpy as np
@@ -20,6 +19,7 @@ from umap import UMAP
 def load_embeddings(embeddings_dir):
     """
     Load all embedding files from the specified directory.
+    Works with the new structure where each chunk has its own NPZ file.
 
     Args:
         embeddings_dir: Path to the directory containing embedding .npz files
@@ -30,45 +30,81 @@ def load_embeddings(embeddings_dir):
     all_embeddings = {}
 
     # Find all .npz files in the embeddings directory
-    embedding_files = glob.glob(
-        os.path.join(embeddings_dir, "embeddings_youtube_*.npz")
-    )
+    # The pattern is: {uuid}_{chunk_number}_{start_second}_{end_second}.npz
+    embedding_files = glob.glob(os.path.join(embeddings_dir, "*.npz"))
 
     for file_path in embedding_files:
-        # Extract video ID from filename
-        match = re.search(
-            r"embeddings_youtube_([^.]+)\.npz", os.path.basename(file_path)
-        )
-        if match:
-            video_id = match.group(1)
+        # Extract video ID and chunk number from filename
+        # Pattern: {uuid}_{chunk_number}_{start_second}_{end_second}.npz
+        basename = os.path.basename(file_path)
+        # Remove the extension to get the base name
+        base_name_no_ext = os.path.splitext(basename)[0]
+        # Split by underscore to get components
+        parts = base_name_no_ext.split("_")
 
-            # Load the embeddings
-            try:
-                embeddings = np.load(file_path)
+        # Need at least 4 parts: uuid, chunk_number, start_second, end_second
+        if len(parts) >= 4:
+            # The UUID could contain underscores, so we need to be careful
+            # The chunk number is always the second-to-last element before the timestamps
+            # Assuming format is {uuid}_{chunk_number}_{start}_{end}
+            # where chunk_number, start, and end are all numeric
 
-                # Store embeddings by video ID
-                all_embeddings[video_id] = {
-                    key: embeddings[key] for key in embeddings.keys()
-                }
+            # Try to find where the numeric parts start
+            numeric_indices = [i for i, part in enumerate(parts) if part.isdigit()]
 
-                print(
-                    f"Loaded embeddings for video {video_id} with {len(embeddings.keys())} chunks"
-                )
-            except Exception as e:
-                print(f"Error loading embeddings from {file_path}: {e}")
+            if numeric_indices:
+                # The first numeric part should be the chunk number
+                chunk_num_index = numeric_indices[0]
+                # UUID is everything before the chunk number
+                video_id = "_".join(parts[:chunk_num_index])
+                # Chunk number is at the chunk_num_index
+                try:
+                    chunk_num = int(parts[chunk_num_index])
+
+                    # Initialize dict for this video if not already present
+                    if video_id not in all_embeddings:
+                        all_embeddings[video_id] = {}
+
+                    # Load the embedding for this chunk
+                    try:
+                        embedding_data = np.load(file_path)
+
+                        # The key in the NPZ file should be 'embedding'
+                        if "embedding" in embedding_data:
+                            # Store under chunk_{number} key to maintain compatibility
+                            chunk_key = f"chunk_{chunk_num}"
+                            all_embeddings[video_id][chunk_key] = embedding_data[
+                                "embedding"
+                            ]
+                        else:
+                            print(f"Warning: No 'embedding' key found in {file_path}")
+
+                    except Exception as e:
+                        print(f"Error loading embedding from {file_path}: {e}")
+                except ValueError:
+                    print(f"Could not parse chunk number from {basename}")
+            else:
+                print(f"No numeric parts found in filename: {basename}")
+        else:
+            print(f"Filename does not match expected pattern: {basename}")
+
+    # Print summary of loaded embeddings
+    for video_id, chunks in all_embeddings.items():
+        print(f"Loaded embeddings for video {video_id} with {len(chunks)} chunks")
 
     return all_embeddings
 
 
 def get_metadata_from_csv(video_ids):
     """
-    Get metadata for the given video IDs from the CSV file.
+    Get metadata for the given UUIDs from the CSV file.
+    Works with the new pipeline where UUIDs are used instead of YouTube video IDs.
 
     Args:
-        video_ids: List of video IDs to find metadata for
+        video_ids: List of UUIDs to find metadata for
 
     Returns:
-        Dictionary mapping video IDs to dictionaries of metadata
+        Dictionary mapping UUIDs to dictionaries of metadata
     """
     # Initialize with default values
     metadata = {
@@ -96,39 +132,52 @@ def get_metadata_from_csv(video_ids):
             # Read the CSV file using pandas
             df = pd.read_csv(csv_path)
 
-            if not df.empty and "link" in df.columns:
-                # Get all column names except 'link'
-                metadata_columns = [col for col in df.columns if col != "link"]
+            if not df.empty:
+                # Check if the CSV has the required columns
+                if "uuid" not in df.columns:
+                    print(
+                        "Warning: CSV file is missing 'uuid' column. Cannot match metadata."
+                    )
+                    return metadata
+
+                # Get all column names for metadata
+                metadata_columns = [col for col in df.columns if col != "uuid"]
 
                 # Process each row in the dataframe
                 for _, row in df.iterrows():
                     try:
-                        # Extract video ID from the YouTube link
-                        url = row["link"]
-                        video_id = url.split("v=")[1]
-                        if "&" in video_id:
-                            video_id = video_id.split("&")[0]
+                        # Get the UUID directly from the row
+                        if "uuid" in row:
+                            uuid = str(
+                                row["uuid"]
+                            )  # Convert to string to ensure matching
 
-                        # If this video ID is in our list, extract all metadata
-                        if video_id in video_ids:
-                            # Create a dictionary with all available metadata
-                            video_metadata = {}
-                            for col in metadata_columns:
-                                # Use empty string if the value is NaN
-                                value = row[col] if pd.notna(row[col]) else "Unknown"
-                                video_metadata[col] = value
+                            # If this UUID is in our list, extract all metadata
+                            if uuid in video_ids:
+                                # Create a dictionary with all available metadata
+                                video_metadata = {}
+                                for col in metadata_columns:
+                                    # Use "Unknown" if the value is NaN
+                                    value = (
+                                        row[col] if pd.notna(row[col]) else "Unknown"
+                                    )
+                                    video_metadata[col] = value
 
-                            # Add the original YouTube link to the metadata
-                            video_metadata["link"] = url
-
-                            metadata[video_id] = video_metadata
-                            print(f"Found metadata for video {video_id}")
+                                metadata[uuid] = video_metadata
+                                print(f"Found metadata for UUID {uuid}")
                     except Exception as e:
                         print(f"Error processing row in CSV: {e}")
             else:
-                print("CSV file is empty or missing required columns.")
+                print("CSV file is empty.")
         else:
             print(f"CSV file not found at {csv_path}")
+
+        # Print summary of metadata matching
+        found_count = sum(
+            1 for vid in video_ids if metadata[vid]["song_name"] != "Unknown"
+        )
+        print(f"Found metadata for {found_count} out of {len(video_ids)} UUIDs")
+
     except Exception as e:
         print(f"Error reading metadata from CSV: {e}")
 
@@ -138,6 +187,7 @@ def get_metadata_from_csv(video_ids):
 def prepare_embeddings_for_umap(all_embeddings, embedding_type="cls"):
     """
     Prepare embeddings for UMAP by extracting the specified embedding type.
+    Works with the new embedding structure where each chunk has its own embedding file.
 
     Args:
         all_embeddings: Dictionary of embeddings by video ID
@@ -155,24 +205,40 @@ def prepare_embeddings_for_umap(all_embeddings, embedding_type="cls"):
             # Extract chunk number from key (e.g., 'chunk_1' -> 1)
             chunk_num = int(chunk_key.split("_")[1])
 
-            # Each embedding is shape [3, 768] where:
-            # embedding[0] = CLS token embedding
-            # embedding[1] = DIST token embedding
-            # embedding[2] = Average of other token embeddings
-            if embedding_type == "cls":
-                embeddings_list.append(embedding[0])
-            elif embedding_type == "dist":
-                embeddings_list.append(embedding[1])
-            elif embedding_type == "avg":
-                embeddings_list.append(embedding[2])
-            elif embedding_type == "combined":
-                # Concatenate all three embeddings
-                embeddings_list.append(
-                    np.concatenate([embedding[0], embedding[1], embedding[2]])
+            # Check the shape of the embedding to determine its structure
+            if len(embedding.shape) == 2 and embedding.shape[0] == 3:
+                # Original format with [3, 768] shape where:
+                # embedding[0] = CLS token embedding
+                # embedding[1] = DIST token embedding
+                # embedding[2] = Average of other token embeddings
+                if embedding_type == "cls":
+                    embeddings_list.append(embedding[0])
+                elif embedding_type == "dist":
+                    embeddings_list.append(embedding[1])
+                elif embedding_type == "avg":
+                    embeddings_list.append(embedding[2])
+                elif embedding_type == "combined":
+                    # Concatenate all three embeddings
+                    embeddings_list.append(
+                        np.concatenate([embedding[0], embedding[1], embedding[2]])
+                    )
+            else:
+                # New format where the embedding is already a single vector
+                # Just use the embedding directly regardless of embedding_type
+                # This handles the case where the embedding is a flattened vector
+                embeddings_list.append(embedding)
+                print(
+                    f"Using new embedding format for {video_id} chunk {chunk_num} with shape {embedding.shape}"
                 )
 
             video_ids_list.append(video_id)
             chunk_numbers.append(chunk_num)
+
+    if not embeddings_list:
+        print(
+            "Warning: No embeddings were processed. Check if the embedding files exist and have the correct format."
+        )
+        return np.array([]), [], []
 
     return np.array(embeddings_list), video_ids_list, chunk_numbers
 
@@ -231,10 +297,21 @@ def create_visualization(
         "vintage",
         "link",
     ]
+
+    # Print some debug information
+    print(f"Found {len(unique_video_ids)} unique video IDs in embeddings")
+    print(f"Found metadata for {len(metadata_by_video)} video IDs")
+
+    # Create a mapping from each video_id to its metadata
+    # This ensures consistent metadata for all chunks from the same video
     for column in metadata_columns:
-        df_data[column] = [
-            metadata_by_video.get(vid, {}).get(column, "Unknown") for vid in video_ids
-        ]
+        column_values = []
+        for vid in video_ids:
+            # Get metadata for this video ID
+            metadata = metadata_by_video.get(vid, {})
+            value = metadata.get(column, "Unknown")
+            column_values.append(value)
+        df_data[column] = column_values
 
     # Create the DataFrame
     df = pd.DataFrame(df_data)
