@@ -502,11 +502,14 @@ def create_embedding_visualization(
     lines_df = pd.DataFrame(lines_data) if lines_data else pd.DataFrame()
 
     # Create the lines layer if we have line data
+
+    # Create a selection that chooses the legend item for interactive opacity
+    legend_selection = alt.selection_multi(fields=[color_selection], bind="legend")
     lines = None
     if not lines_df.empty and show_lines:
         lines = (
             alt.Chart(lines_df)
-            .mark_line(opacity=0.5, strokeWidth=1.5)
+            .mark_line(strokeWidth=1.5)  # Original strokeWidth, dynamic opacity
             .encode(
                 x="x1:Q",
                 y="y1:Q",
@@ -514,36 +517,39 @@ def create_embedding_visualization(
                 y2="y2:Q",
                 color=alt.Color(
                     f"{color_selection}:N",
-                    legend=None,
+                    legend=None,  # Hide legend for lines
                 ),
-                tooltip=[
-                    "song_name:N",
-                    "artist:N",
-                    "maqam:N",
-                    "type:N",
-                    "electric:N",
-                    "vintage:N",
-                ],
+                opacity=alt.condition(legend_selection, alt.value(0.7), alt.value(0.1)) # Conditional opacity for lines
+            )
+            .add_selection(
+                legend_selection
             )
         )
 
+
+
     # Create the points layer
-    points = base.mark_circle(size=100).encode(
-        color=alt.Color(
-            f"{color_selection}:N",
-            legend=alt.Legend(title=color_selection.replace("_", " ").title()),
-        ),
-        tooltip=[
-            "video_id:N",  # For UUID
-            "song_name:N",
-            "artist:N",
-            "maqam:N",
-            "type:N",  # Restored
-            "electric:N",  # Restored
-            "vintage:N",
-            "chunk_number:Q",
-            "link:N",
-        ],
+    points = (
+        base.mark_circle(size=100)
+        .encode(
+            color=alt.Color(
+                f"{color_selection}:N",
+                legend=alt.Legend(title=color_selection.replace("_", " ").title()),
+            ),
+            tooltip=[
+                "video_id:N",  # For UUID
+                "song_name:N",
+                "artist:N",
+                "maqam:N",
+                "type:N",  # Restored
+                "electric:N",  # Restored
+                "vintage:N",
+                "chunk_number:Q",
+                "link:N",
+            ],
+            opacity=alt.condition(legend_selection, alt.value(1.0), alt.value(0.05)),
+        )
+        .add_selection(legend_selection)
     )
 
     # Create the text layer for chunk numbers if requested
@@ -554,6 +560,9 @@ def create_embedding_visualization(
         ).encode(
             text="chunk_number:N",
             color=alt.value("black"),
+            opacity=alt.condition(legend_selection, alt.value(1.0), alt.value(0.2))
+        ).add_selection(
+            legend_selection
         )
 
     # Combine the layers
