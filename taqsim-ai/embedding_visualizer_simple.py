@@ -184,14 +184,15 @@ def get_metadata_from_csv(video_ids):
     return metadata
 
 
-def prepare_embeddings_for_umap(all_embeddings, embedding_type="cls"):
+def prepare_embeddings_for_umap(all_embeddings, embedding_type="cls", exclude_last_chunk=False):
     """
-    Prepare embeddings for UMAP by extracting the specified embedding type.
-    Works with the new embedding structure where each chunk has its own embedding file.
+    Prepare embeddings for UMAP dimensionality reduction.
+    Can optionally exclude the last chunk from each video.
 
     Args:
-        all_embeddings: Dictionary of embeddings by video ID
+        all_embeddings: Dictionary of embeddings by video ID and chunk
         embedding_type: Which embedding type to use ('cls', 'dist', 'avg', or 'combined')
+        exclude_last_chunk: If True, exclude the last chunk from each video
 
     Returns:
         Tuple of (embeddings array, video_ids list, chunk_numbers list)
@@ -201,9 +202,23 @@ def prepare_embeddings_for_umap(all_embeddings, embedding_type="cls"):
     chunk_numbers = []
 
     for video_id, video_embeddings in all_embeddings.items():
+        # If we need to exclude the last chunk, find the maximum chunk number
+        max_chunk = -1
+        if exclude_last_chunk and video_embeddings:
+            # Extract all chunk numbers and find the maximum
+            chunk_nums = [int(key.split("_")[1]) for key in video_embeddings.keys()]
+            if chunk_nums:
+                max_chunk = max(chunk_nums)
+                print(f"Excluding last chunk (#{max_chunk}) for video {video_id}")
+
         for chunk_key, embedding in video_embeddings.items():
             # Extract chunk number from key (e.g., 'chunk_1' -> 1)
             chunk_num = int(chunk_key.split("_")[1])
+            
+            # Skip this chunk if it's the last one and we're excluding last chunks
+            if exclude_last_chunk and chunk_num == max_chunk:
+                print(f"Skipping chunk {chunk_num} for video {video_id} (last chunk)")
+                continue
 
             # Check the shape of the embedding to determine its structure
             if len(embedding.shape) == 2 and embedding.shape[0] == 3:
@@ -234,17 +249,17 @@ def prepare_embeddings_for_umap(all_embeddings, embedding_type="cls"):
             video_ids_list.append(video_id)
             chunk_numbers.append(chunk_num)
 
-    if not embeddings_list:
-        print(
-            "Warning: No embeddings were processed. Check if the embedding files exist and have the correct format."
-        )
+    # Convert to numpy arrays for UMAP
+    if embeddings_list:
+        embeddings_array = np.vstack(embeddings_list)
+        return embeddings_array, video_ids_list, chunk_numbers
+    else:
+        print("No valid embeddings found for the selected embedding type.")
         return np.array([]), [], []
-
-    return np.array(embeddings_list), video_ids_list, chunk_numbers
 
 
 def create_visualization(
-    embeddings_dir, embedding_type="cls", output_dir=None, html_filename=None
+    embeddings_dir, embedding_type="cls", output_dir=None, html_filename=None, exclude_last_chunk=False
 ):
     """
     Create a simple interactive visualization of the embeddings using Altair.
@@ -267,7 +282,7 @@ def create_visualization(
 
     # Prepare embeddings for UMAP
     embeddings, video_ids, chunk_numbers = prepare_embeddings_for_umap(
-        all_embeddings, embedding_type
+        all_embeddings, embedding_type, exclude_last_chunk
     )
 
     # Get metadata for all video IDs
@@ -573,41 +588,79 @@ if __name__ == "__main__":
         description="Create interactive visualizations of MAEST audio embeddings"
     )
     parser.add_argument(
-        "--embeddings_dir", default=None, help="Directory containing embedding files"
+        "--embeddings-dir",
+        type=str,
+        default=None,
+        help="Directory containing embedding files (default: data/embeddings)",
     )
     parser.add_argument(
-        "--output_dir", default=None, help="Directory to save HTML files"
-    )
-    parser.add_argument(
-        "--embedding_type",
+        "--embedding-type",
+        type=str,
         default="all",
         choices=["cls", "dist", "avg", "combined", "all"],
-        help="Type of embedding to visualize",
+        help="Type of embedding to visualize (cls, dist, avg, combined, or all)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Directory to save the visualization HTML file",
+    )
+    parser.add_argument(
+        "--html-filename",
+        type=str,
+        default=None,
+        help="Name of the output HTML file",
+    )
+    parser.add_argument(
+        "--exclude-last-chunk",
+        action="store_true",
+        help="Exclude the last chunk from each video in the visualization",
     )
 
     args = parser.parse_args()
 
-    # If embeddings_dir not specified, use default data/embeddings directory
+    # Set default embeddings directory if not specified
     if args.embeddings_dir is None:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         project_dir = os.path.dirname(script_dir)
         args.embeddings_dir = os.path.join(project_dir, "data", "embeddings")
+        print(f"Using default embeddings directory: {args.embeddings_dir}")
 
-    # If output_dir not specified, use default data/visualizations directory
+    # Set default output directory if not specified
     if args.output_dir is None:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         project_dir = os.path.dirname(script_dir)
         args.output_dir = os.path.join(project_dir, "data", "visualizations")
-
-    # Create output directory if specified
-    if args.output_dir:
-        os.makedirs(args.output_dir, exist_ok=True)
-
+    
+    # Ensure output directory exists
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Process based on embedding type
     if args.embedding_type == "all":
-        create_all_visualizations(args.embeddings_dir, args.output_dir)
+        print("Creating visualizations for all embedding types (cls, dist, avg, combined)...")
+        # Create visualizations for all embedding types
+        for embedding_type in ["cls", "dist", "avg", "combined"]:
+            html_filename = f"maest_embeddings_{embedding_type}.html"
+            print(f"\nProcessing {embedding_type} embeddings...")
+            create_visualization(
+                args.embeddings_dir,
+                embedding_type,
+                args.output_dir,
+                html_filename,
+                args.exclude_last_chunk,
+            )
+        print("\nAll visualizations created successfully!")
     else:
+        # Set default HTML filename if not specified
+        if args.html_filename is None:
+            args.html_filename = f"maest_embeddings_{args.embedding_type}.html"
+            
+        # Create visualization for the specified embedding type
         create_visualization(
-            embeddings_dir=args.embeddings_dir,
-            embedding_type=args.embedding_type,
-            output_dir=args.output_dir,
+            args.embeddings_dir,
+            args.embedding_type,
+            args.output_dir,
+            args.html_filename,
+            args.exclude_last_chunk,
         )
