@@ -108,7 +108,11 @@ elif page == "Data Explorer":
 # Embeddings Visualization page
 elif page == "Embeddings Visualization":
     st.header("Embeddings Visualization")
-    st.write("This page will provide interactive visualizations of audio embeddings.")
+    st.write(
+        "This page will provide interactive visualizations of audio embeddings."
+        "Each dot represent a 30 second segments of the taqsim, with the numbering representing"
+        " the segment order."
+    )
     embedding_visualizer_ui()
 
 

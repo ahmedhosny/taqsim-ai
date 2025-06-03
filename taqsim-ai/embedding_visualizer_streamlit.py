@@ -28,19 +28,82 @@ def get_all_artists_from_csv():
         df = pd.read_csv(csv_path)
         if "artist" in df.columns:
             # Get unique artists, convert to string, strip whitespace, handle empty strings, sort
-            artists = sorted(list(
-                df["artist"].astype(str).str.strip().replace('', 'Unknown Artist').fillna('Unknown Artist').unique()
-            ))
+            artists = sorted(
+                list(
+                    df["artist"]
+                    .astype(str)
+                    .str.strip()
+                    .replace("", "Unknown Artist")
+                    .fillna("Unknown Artist")
+                    .unique()
+                )
+            )
             # Remove 'Unknown Artist' if it's only there due to empty strings and not a real entry, if desired
             # For now, it will be included if present.
             return artists
         else:
             # Log to sidebar or main page depending on context if Streamlit elements are used here
             # For a pure helper, returning empty and letting caller handle st messages is cleaner
-            # st.sidebar.warning("Metadata CSV is missing 'artist' column.") 
+            # st.sidebar.warning("Metadata CSV is missing 'artist' column.")
             return []
     except FileNotFoundError:
         # st.sidebar.error(f"Metadata CSV file not found at: {csv_path}")
+        return []
+
+
+# Helper function to get all unique song names from the metadata CSV
+def get_all_songs_from_csv():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_dir = os.path.dirname(script_dir)
+    csv_path = os.path.join(project_dir, "data", "taqsim_ai.csv")
+    try:
+        df = pd.read_csv(csv_path)
+        if "song_name" in df.columns:
+            songs = sorted(
+                list(
+                    df["song_name"]
+                    .astype(str)
+                    .str.strip()
+                    .replace("", "Unknown Song")
+                    .fillna("Unknown Song")
+                    .unique()
+                )
+            )
+            return songs
+        else:
+            return []
+    except FileNotFoundError:
+        return []
+    except Exception:
+        # st.sidebar.error(f"Error reading songs from CSV: {e}") # Consider context for st messages
+        return []
+
+
+# Helper function to get all unique maqam names from the metadata CSV
+def get_all_maqams_from_csv():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_dir = os.path.dirname(script_dir)
+    csv_path = os.path.join(project_dir, "data", "taqsim_ai.csv")
+    try:
+        df = pd.read_csv(csv_path)
+        if "maqam" in df.columns:
+            maqams = sorted(
+                list(
+                    df["maqam"]
+                    .astype(str)
+                    .str.strip()
+                    .replace("", "Unknown Maqam")
+                    .fillna("Unknown Maqam")
+                    .unique()
+                )
+            )
+            return maqams
+        else:
+            return []
+    except FileNotFoundError:
+        return []
+    except Exception:
+        # st.sidebar.error(f"Error reading maqams from CSV: {e}") # Consider context for st messages
         return []
     except Exception as _e:
         # st.sidebar.error(f"Error reading artists from CSV: {_e}")
@@ -246,14 +309,18 @@ def prepare_embeddings_for_umap(
 
 
 def create_embedding_visualization(
-    embeddings_dir,
-    embedding_type="cls",
-    exclude_last_chunk=False,
-    artist_filter: list[str] | None = None,  # Expect a list of artists or None
-    only_first_chunk=False,
-    color_selection="song_name",
-    show_lines=True,
-    show_numbers=True,
+    embeddings_dir: str,
+    embedding_type: str = "cls",
+    exclude_last_chunk: bool = False,
+    artist_filter: list[str] | None = None,
+    song_filter: list[str] | None = None,
+    maqam_filter: list[str] | None = None,
+    only_first_chunk: bool = False,
+    color_selection: str = "artist",
+    show_lines: bool = False,
+    show_chunk_numbers: bool = False,
+    show_only_selected_artist_labels: bool = False,
+    debug: bool = False,
 ):
     """
     Create an interactive visualization of audio embeddings using Altair.
@@ -263,10 +330,13 @@ def create_embedding_visualization(
         embedding_type: Type of embedding to visualize ('cls', 'dist', 'avg', or 'combined')
         exclude_last_chunk: If True, exclude the last chunk from each video
         artist_filter: Optional list of artist names to filter by. If None or empty, no artist filter is applied.
+        song_filter: Optional list of song names to filter by. If None or empty, no song filter is applied.
         only_first_chunk: If True, only include the first chunk from each video
         color_selection: Attribute to color points by (e.g., 'song_name', 'artist')
         show_lines: Boolean to show connecting lines between chunks
-        show_numbers: Boolean to show chunk numbers on points
+        show_chunk_numbers: Boolean to show chunk numbers on points
+        show_only_selected_artist_labels: Boolean to only show labels for selected artists
+        debug: Boolean to enable debug mode
 
     Returns:
         Altair chart object or None if visualization couldn't be created
@@ -331,28 +401,66 @@ def create_embedding_visualization(
     df = pd.DataFrame(df_data)
 
     # Apply artist filter if provided and not empty
-    if artist_filter and len(artist_filter) > 0:
+    if artist_filter and isinstance(artist_filter, list) and len(artist_filter) > 0:
         st.info(f"Filtering by artists: {', '.join(artist_filter)}")
         total_points_before_artist_filter = len(df)
         unique_songs_before_artist_filter = df["song_name"].nunique()
-
-        # Filter by a list of artists (case-sensitive, ensure metadata is consistent or handle case in get_all_artists_from_csv)
         df = df[df["artist"].isin(artist_filter)]
-        
         filtered_points_after_artist_filter = len(df)
         unique_songs_after_artist_filter = df["song_name"].nunique()
 
-        st.info(f"Filtered from {total_points_before_artist_filter} points to {filtered_points_after_artist_filter} points based on artist selection.")
+        st.info(
+            f"Filtered from {total_points_before_artist_filter} points to {filtered_points_after_artist_filter} points based on artist selection."
+        )
         st.info(
             f"Filtered from {unique_songs_before_artist_filter} songs to {unique_songs_after_artist_filter} songs based on artist selection."
         )
-
-        if filtered_points_after_artist_filter == 0:
+        if df.empty:
             st.warning(
-                f"No data points remain after filtering for selected artists: {', '.join(artist_filter)}"
+                "No data points remaining after artist filtering. Please adjust your selection."
             )
-            # Listing all available artists might be too much if the list is long.
-            # The multiselect itself shows available artists.
+            return None
+
+    # Filter by song_name if song_filter is provided
+    if song_filter and isinstance(song_filter, list) and len(song_filter) > 0:
+        total_points_before_song_filter = len(df)
+        unique_songs_before_song_filter = df["song_name"].nunique()
+        st.info(f"Applying song filter: {song_filter}")
+        df = df[df["song_name"].isin(song_filter)]
+        filtered_points_after_song_filter = len(df)
+        unique_songs_after_song_filter = df["song_name"].nunique()
+
+        st.info(
+            f"Filtered from {total_points_before_song_filter} points to {filtered_points_after_song_filter} points based on song selection."
+        )
+        st.info(
+            f"Filtered from {unique_songs_before_song_filter} songs to {unique_songs_after_song_filter} songs based on song selection."
+        )
+        if df.empty:
+            st.warning(
+                "No data points remaining after song filtering. Please adjust your selection."
+            )
+            return None
+
+    # Filter by maqam if maqam_filter is provided
+    if maqam_filter and isinstance(maqam_filter, list) and len(maqam_filter) > 0:
+        total_points_before_maqam_filter = len(df)
+        unique_maqams_before_maqam_filter = df["maqam"].nunique()
+        st.info(f"Applying maqam filter: {maqam_filter}")
+        df = df[df["maqam"].isin(maqam_filter)]
+        filtered_points_after_maqam_filter = len(df)
+        unique_maqams_after_maqam_filter = df["maqam"].nunique()
+
+        st.info(
+            f"Filtered from {total_points_before_maqam_filter} points to {filtered_points_after_maqam_filter} points based on maqam selection."
+        )
+        st.info(
+            f"Filtered from {unique_maqams_before_maqam_filter} maqams to {unique_maqams_after_maqam_filter} maqams based on maqam selection."
+        )
+        if df.empty:
+            st.warning(
+                "No data points remaining after maqam filtering. Please adjust your selection."
+            )
             return None
 
     # Sort the DataFrame by video_id and chunk_number for the line paths
@@ -426,11 +534,12 @@ def create_embedding_visualization(
             legend=alt.Legend(title=color_selection.replace("_", " ").title()),
         ),
         tooltip=[
+            "video_id:N",  # For UUID
             "song_name:N",
             "artist:N",
             "maqam:N",
-            "type:N",
-            "electric:N",
+            "type:N",  # Restored
+            "electric:N",  # Restored
             "vintage:N",
             "chunk_number:Q",
             "link:N",
@@ -439,7 +548,7 @@ def create_embedding_visualization(
 
     # Create the text layer for chunk numbers if requested
     text = None
-    if show_numbers:
+    if show_chunk_numbers:
         text = base.mark_text(
             align="center", baseline="middle", dy=-10, fontSize=10
         ).encode(
@@ -468,45 +577,29 @@ def create_embedding_visualization(
     return chart
 
 
-# Callback functions for artist filter UI
-def manage_artist_toggle():
-    available_artists = st.session_state.get('available_artists_for_viz', [])
-    if not available_artists:
-        return
+# Callback for multiselect artist filter
+def callback_multiselect_artists():
+    # This callback is for the multiselect widget
+    # It reads the multiselect's current selection (which triggered the callback)
+    # and updates the main selected_artists_for_filter list.
+    st.session_state.selected_artists_for_filter = st.session_state.get(
+        "multiselect_artist_value", []
+    )[:]
 
-    if len(st.session_state.selected_artists_for_viz) == len(available_artists):
-        st.session_state.selected_artists_for_viz = []
-    else:
-        st.session_state.selected_artists_for_viz = available_artists[:]
-    # When toggling, always turn off quick focus as its state might become inconsistent
-    st.session_state.quick_focus_artist_selectbox_value = "(Focus Off)"
 
-def manage_quick_focus_change():
-    # This function is called when the quick_focus_artist_selectbox's value changes.
-    # The new value is in st.session_state.quick_focus_artist_selectbox_value
-    focused_artist = st.session_state.quick_focus_artist_selectbox_value
+# Callback for multiselect song filter
+def callback_multiselect_songs():
+    st.session_state.selected_songs_for_filter = st.session_state.get(
+        "multiselect_song_value", []
+    )[:]
 
-    if focused_artist != "(Focus Off)":
-        st.session_state.selected_artists_for_viz = [focused_artist]
-    # If focus is turned off, selected_artists_for_viz is NOT automatically changed here.
-    # The user would then use the multiselect or toggle to change the selection further.
-    # This means selected_artists_for_viz will still hold the single focused artist until another action changes it.
 
-def manage_multiselect_change():
-    # This function is called when the artist_multiselect_widget's value changes.
-    # The new value is in st.session_state.artist_multiselect_widget_value
-    st.session_state.selected_artists_for_viz = st.session_state.artist_multiselect_widget_value
-    
-    # If user interacts with multiselect, and the current selection doesn't match a single focused artist,
-    # then reset the quick focus selectbox to "(Focus Off)".
-    current_selectbox_val = st.session_state.get('quick_focus_artist_selectbox_value', "(Focus Off)")
-    if current_selectbox_val != "(Focus Off)":
-        is_multiselect_matching_focus = (
-            len(st.session_state.selected_artists_for_viz) == 1 and 
-            st.session_state.selected_artists_for_viz[0] == current_selectbox_val
-        )
-        if not is_multiselect_matching_focus:
-            st.session_state.quick_focus_artist_selectbox_value = "(Focus Off)"
+# Callback for multiselect maqam filter
+def callback_multiselect_maqams():
+    st.session_state.selected_maqams_for_filter = st.session_state.get(
+        "multiselect_maqam_value", []
+    )[:]
+
 
 def embedding_visualizer_ui():
     """
@@ -532,76 +625,152 @@ def embedding_visualizer_ui():
     embedding_type = st.sidebar.selectbox(
         "Embedding Type",
         ["cls", "dist", "avg", "combined"],
-        index=0,
+        index=3,
         help="Type of embedding to visualize",
     )
 
     # Artist Filter Section
-    st.session_state.available_artists_for_viz = get_all_artists_from_csv()
 
-    if not st.session_state.available_artists_for_viz:
-        st.sidebar.warning("No artists found in metadata to filter by.")
-        artist_filter_for_visualization = []
+    # 1. Get current available artists (options for the multiselect)
+    current_artist_options = get_all_artists_from_csv()
+
+    # 2. Initialize or update the multiselect's actual selected values in session state
+    # 'multiselect_artist_value' is the key bound to the widget.
+    if "multiselect_artist_value" not in st.session_state:
+        # First time for this session: default to all artists selected.
+        st.session_state.multiselect_artist_value = current_artist_options[:]
     else:
-        # Initialize session state for selected artists and focus selectbox if they don't exist
-        if 'selected_artists_for_viz' not in st.session_state:
-            st.session_state.selected_artists_for_viz = st.session_state.available_artists_for_viz[:]
-        if 'quick_focus_artist_selectbox_value' not in st.session_state:
-            st.session_state.quick_focus_artist_selectbox_value = "(Focus Off)"
-        if 'artist_multiselect_widget_value' not in st.session_state: # For direct binding from multiselect
-            st.session_state.artist_multiselect_widget_value = st.session_state.selected_artists_for_viz[:]
-
-        st.sidebar.subheader("Artist Filter")
-
-        # Ensure selected_artists_for_viz is always a subset of available_artists_for_viz
-        # This handles cases where CSV might change and previously selected artists are no longer available.
-        st.session_state.selected_artists_for_viz = [
-            artist for artist in st.session_state.selected_artists_for_viz 
-            if artist in st.session_state.available_artists_for_viz
+        # Session state exists: reconcile it with current available options.
+        # This ensures that if the user cleared the selection (it's []), it remains [].
+        # It also removes any selected artists that are no longer in current_artist_options.
+        st.session_state.multiselect_artist_value = [
+            artist
+            for artist in st.session_state.multiselect_artist_value
+            if artist in current_artist_options
         ]
-        # If selection became empty and it wasn't intentionally emptied, re-select all
-        if not st.session_state.selected_artists_for_viz and st.session_state.available_artists_for_viz and not st.session_state.get('user_deselected_all', False):
-             st.session_state.selected_artists_for_viz = st.session_state.available_artists_for_viz[:]
-        st.session_state.pop('user_deselected_all', None) # Reset flag
+        # Edge case: if current_artist_options is now empty (e.g. CSV cleared),
+        # multiselect_artist_value should also be empty.
+        if not current_artist_options:
+            st.session_state.multiselect_artist_value = []
 
-        # Update multiselect key to reflect current selection state for proper rendering
-        st.session_state.artist_multiselect_widget_value = st.session_state.selected_artists_for_viz[:]
-
-        col1_toggle, col2_focus = st.sidebar.columns([1,2]) # Adjust column width ratio if needed
-
-        with col1_toggle:
-            st.button("Toggle All", on_click=manage_artist_toggle, key="toggle_artists_button")
-
-        with col2_focus:
-            focus_options = ["(Focus Off)"] + st.session_state.available_artists_for_viz
-            st.selectbox(
-                "Quick Focus",
-                options=focus_options,
-                key="quick_focus_artist_selectbox_value", # Bind directly to session state key
-                on_change=manage_quick_focus_change,
-                help="Select one artist to focus on, deselecting others."
-            )
-
-        # Artist Multiselect
-        st.sidebar.multiselect(
-            "Select Artists:",
-            options=st.session_state.available_artists_for_viz,
-            key="artist_multiselect_widget_value", # Bind directly to session state key
-            on_change=manage_multiselect_change,
-            help="Select one or more artists to include in the visualization."
+    # 3. Initialize 'selected_artists_for_filter' (used by visualization logic)
+    # This is primarily set by the callback. Initialize if it doesn't exist, from the
+    # (now definite) state of 'multiselect_artist_value'.
+    if "selected_artists_for_filter" not in st.session_state:
+        st.session_state.selected_artists_for_filter = (
+            st.session_state.multiselect_artist_value[:]
         )
-        # The source of truth for filtering is selected_artists_for_viz, updated by callbacks
-        artist_filter_for_visualization = st.session_state.selected_artists_for_viz
+    # Note: The callback 'callback_multiselect_artists' will ensure
+    # 'selected_artists_for_filter' tracks 'multiselect_artist_value' after user interactions.
+
+    # --- UI Rendering for Artist Filter ---
+    if not current_artist_options:  # Check the fresh list for UI decision
+        st.sidebar.warning("No artists found in metadata to filter by.")
+        artist_filter_for_visualization = []  # Ensure this is empty if no options
+    else:
+        with st.sidebar.expander("Filter by Artist", expanded=False):
+            st.multiselect(
+                "",
+                options=current_artist_options,
+                key="multiselect_artist_value",
+                on_change=callback_multiselect_artists,
+                # No 'default' needed here, as 'st.session_state.multiselect_artist_value' is managed above
+            )
+    # Use .get for safety for the variable passed to the visualization function.
+    # It should be correctly populated by the logic above or the callback.
+    artist_filter_for_visualization = st.session_state.get(
+        "selected_artists_for_filter", []
+    )
+
+    # --- Song Filter Section ---
+    current_song_options = get_all_songs_from_csv()
+
+    if "multiselect_song_value" not in st.session_state:
+        st.session_state.multiselect_song_value = current_song_options[:]
+    else:
+        st.session_state.multiselect_song_value = [
+            song
+            for song in st.session_state.multiselect_song_value
+            if song in current_song_options
+        ]
+        if not current_song_options:
+            st.session_state.multiselect_song_value = []
+
+    if "selected_songs_for_filter" not in st.session_state:
+        st.session_state.selected_songs_for_filter = (
+            st.session_state.multiselect_song_value[:]
+        )
+
+    # Ensure selected_songs_for_filter is synced if multiselect_song_value changed programmatically
+    st.session_state.selected_songs_for_filter = (
+        st.session_state.multiselect_song_value[:]
+    )
+
+    if not current_song_options:
+        st.sidebar.warning("No songs found in metadata to filter by.")
+        song_filter_for_visualization = []
+    else:
+        with st.sidebar.expander("Filter by Taqsim", expanded=False):
+            st.multiselect(
+                "",
+                options=current_song_options,
+                key="multiselect_song_value",
+                on_change=callback_multiselect_songs,
+            )
+    song_filter_for_visualization = st.session_state.get(
+        "selected_songs_for_filter", []
+    )
+
+    # --- Maqam Filter Section ---
+    current_maqam_options = get_all_maqams_from_csv()
+
+    if "multiselect_maqam_value" not in st.session_state:
+        st.session_state.multiselect_maqam_value = current_maqam_options[:]
+    else:
+        st.session_state.multiselect_maqam_value = [
+            maqam
+            for maqam in st.session_state.multiselect_maqam_value
+            if maqam in current_maqam_options
+        ]
+        if not current_maqam_options:
+            st.session_state.multiselect_maqam_value = []
+
+    if "selected_maqams_for_filter" not in st.session_state:
+        st.session_state.selected_maqams_for_filter = (
+            st.session_state.multiselect_maqam_value[:]
+        )
+
+    # Ensure selected_maqams_for_filter is synced if multiselect_maqam_value changed programmatically
+    st.session_state.selected_maqams_for_filter = (
+        st.session_state.multiselect_maqam_value[:]
+    )
+
+    if not current_maqam_options:
+        st.sidebar.warning("No maqams found in metadata to filter by.")
+        maqam_filter_for_visualization = []
+    else:
+        with st.sidebar.expander("Filter by Maqam", expanded=False):
+            st.multiselect(
+                "",
+                options=current_maqam_options,
+                key="multiselect_maqam_value",
+                on_change=callback_multiselect_maqams,
+            )
+    maqam_filter_for_visualization = st.session_state.get(
+        "selected_maqams_for_filter", []
+    )
 
     # Chunk filtering options
     exclude_last_chunk = st.sidebar.checkbox(
-        "Exclude Last Chunk", value=False, help="Exclude the last chunk from each song"
+        "Exclude Last Segment",
+        value=True,
+        help="Exclude the last segment from each song",
     )
 
     only_first_chunk = st.sidebar.checkbox(
-        "Only First Chunk",
+        "Only First Segment",
         value=False,
-        help="Only include the first chunk from each song",
+        help="Only include the first segment from each song",
     )
 
     st.sidebar.markdown("---")  # Separator
@@ -619,7 +788,7 @@ def embedding_visualizer_ui():
     show_lines = st.sidebar.checkbox("Show connecting lines", value=True)
 
     # Toggle for showing chunk numbers
-    show_numbers = st.sidebar.checkbox("Show chunk numbers", value=True)
+    show_chunk_numbers = st.sidebar.checkbox("Show Segment Numbers", value=True)
 
     # Create a placeholder for the visualization
     chart_placeholder = st.empty()
@@ -633,11 +802,13 @@ def embedding_visualizer_ui():
                 embeddings_dir=embeddings_dir,
                 embedding_type=embedding_type,
                 exclude_last_chunk=exclude_last_chunk,
-                artist_filter=artist_filter_for_visualization, # Use the new list-based filter
+                artist_filter=artist_filter_for_visualization,
+                song_filter=song_filter_for_visualization,
+                maqam_filter=maqam_filter_for_visualization,  # Pass the selected maqams
                 only_first_chunk=only_first_chunk,
                 color_selection=color_selection,
                 show_lines=show_lines,
-                show_numbers=show_numbers,
+                show_chunk_numbers=show_chunk_numbers,
             )
 
             if chart:
