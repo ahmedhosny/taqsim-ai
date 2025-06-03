@@ -16,6 +16,37 @@ import streamlit as st
 from umap import UMAP
 
 
+def get_all_artists_from_csv():
+    """
+    Reads the metadata CSV and returns a sorted list of unique artist names.
+    Handles potential missing 'artist' column or file errors.
+    """
+    # Path to the metadata CSV file - ensure this path is correct and accessible
+    # Consider making this path configurable or relative to the project root if needed
+    csv_path = "/Users/ahmedhosny/taqsim-ai/data/taqsim_ai.csv"
+    try:
+        df = pd.read_csv(csv_path)
+        if "artist" in df.columns:
+            # Get unique artists, convert to string, strip whitespace, handle empty strings, sort
+            artists = sorted(list(
+                df["artist"].astype(str).str.strip().replace('', 'Unknown Artist').fillna('Unknown Artist').unique()
+            ))
+            # Remove 'Unknown Artist' if it's only there due to empty strings and not a real entry, if desired
+            # For now, it will be included if present.
+            return artists
+        else:
+            # Log to sidebar or main page depending on context if Streamlit elements are used here
+            # For a pure helper, returning empty and letting caller handle st messages is cleaner
+            # st.sidebar.warning("Metadata CSV is missing 'artist' column.") 
+            return []
+    except FileNotFoundError:
+        # st.sidebar.error(f"Metadata CSV file not found at: {csv_path}")
+        return []
+    except Exception as _e:
+        # st.sidebar.error(f"Error reading artists from CSV: {_e}")
+        return []
+
+
 def load_embeddings(embeddings_dir):
     """
     Load all embedding files from the specified directory.
@@ -218,7 +249,7 @@ def create_embedding_visualization(
     embeddings_dir,
     embedding_type="cls",
     exclude_last_chunk=False,
-    artist_filter=None,
+    artist_filter: list[str] | None = None,  # Expect a list of artists or None
     only_first_chunk=False,
     color_selection="song_name",
     show_lines=True,
@@ -231,7 +262,7 @@ def create_embedding_visualization(
         embeddings_dir: Directory containing embedding files
         embedding_type: Type of embedding to visualize ('cls', 'dist', 'avg', or 'combined')
         exclude_last_chunk: If True, exclude the last chunk from each video
-        artist_filter: If provided, only include songs by this artist
+        artist_filter: Optional list of artist names to filter by. If None or empty, no artist filter is applied.
         only_first_chunk: If True, only include the first chunk from each video
         color_selection: Attribute to color points by (e.g., 'song_name', 'artist')
         show_lines: Boolean to show connecting lines between chunks
@@ -299,34 +330,29 @@ def create_embedding_visualization(
     # Create the DataFrame
     df = pd.DataFrame(df_data)
 
-    # Apply artist filter if specified
-    if artist_filter:
-        st.info(f"Filtering to only include songs by artist: {artist_filter}")
-        # Count before filtering
-        total_points = len(df)
-        unique_songs_before = df["song_name"].nunique()
+    # Apply artist filter if provided and not empty
+    if artist_filter and len(artist_filter) > 0:
+        st.info(f"Filtering by artists: {', '.join(artist_filter)}")
+        total_points_before_artist_filter = len(df)
+        unique_songs_before_artist_filter = df["song_name"].nunique()
 
-        # Apply filter (case insensitive)
-        df = df[df["artist"].str.lower() == artist_filter.lower()]
+        # Filter by a list of artists (case-sensitive, ensure metadata is consistent or handle case in get_all_artists_from_csv)
+        df = df[df["artist"].isin(artist_filter)]
+        
+        filtered_points_after_artist_filter = len(df)
+        unique_songs_after_artist_filter = df["song_name"].nunique()
 
-        # Count after filtering
-        filtered_points = len(df)
-        unique_songs_after = df["song_name"].nunique()
-
-        st.info(f"Filtered from {total_points} points to {filtered_points} points")
+        st.info(f"Filtered from {total_points_before_artist_filter} points to {filtered_points_after_artist_filter} points based on artist selection.")
         st.info(
-            f"Filtered from {unique_songs_before} songs to {unique_songs_after} songs"
+            f"Filtered from {unique_songs_before_artist_filter} songs to {unique_songs_after_artist_filter} songs based on artist selection."
         )
 
-        if filtered_points == 0:
+        if filtered_points_after_artist_filter == 0:
             st.warning(
-                f"No data points remain after filtering for artist '{artist_filter}'"
+                f"No data points remain after filtering for selected artists: {', '.join(artist_filter)}"
             )
-            st.write("Available artists in the dataset:")
-            available_artists = df_data["artist"]
-            unique_artists = set(available_artists)
-            for artist in sorted(unique_artists):
-                st.write(f"  - {artist}")
+            # Listing all available artists might be too much if the list is long.
+            # The multiselect itself shows available artists.
             return None
 
     # Sort the DataFrame by video_id and chunk_number for the line paths
@@ -442,6 +468,46 @@ def create_embedding_visualization(
     return chart
 
 
+# Callback functions for artist filter UI
+def manage_artist_toggle():
+    available_artists = st.session_state.get('available_artists_for_viz', [])
+    if not available_artists:
+        return
+
+    if len(st.session_state.selected_artists_for_viz) == len(available_artists):
+        st.session_state.selected_artists_for_viz = []
+    else:
+        st.session_state.selected_artists_for_viz = available_artists[:]
+    # When toggling, always turn off quick focus as its state might become inconsistent
+    st.session_state.quick_focus_artist_selectbox_value = "(Focus Off)"
+
+def manage_quick_focus_change():
+    # This function is called when the quick_focus_artist_selectbox's value changes.
+    # The new value is in st.session_state.quick_focus_artist_selectbox_value
+    focused_artist = st.session_state.quick_focus_artist_selectbox_value
+
+    if focused_artist != "(Focus Off)":
+        st.session_state.selected_artists_for_viz = [focused_artist]
+    # If focus is turned off, selected_artists_for_viz is NOT automatically changed here.
+    # The user would then use the multiselect or toggle to change the selection further.
+    # This means selected_artists_for_viz will still hold the single focused artist until another action changes it.
+
+def manage_multiselect_change():
+    # This function is called when the artist_multiselect_widget's value changes.
+    # The new value is in st.session_state.artist_multiselect_widget_value
+    st.session_state.selected_artists_for_viz = st.session_state.artist_multiselect_widget_value
+    
+    # If user interacts with multiselect, and the current selection doesn't match a single focused artist,
+    # then reset the quick focus selectbox to "(Focus Off)".
+    current_selectbox_val = st.session_state.get('quick_focus_artist_selectbox_value', "(Focus Off)")
+    if current_selectbox_val != "(Focus Off)":
+        is_multiselect_matching_focus = (
+            len(st.session_state.selected_artists_for_viz) == 1 and 
+            st.session_state.selected_artists_for_viz[0] == current_selectbox_val
+        )
+        if not is_multiselect_matching_focus:
+            st.session_state.quick_focus_artist_selectbox_value = "(Focus Off)"
+
 def embedding_visualizer_ui():
     """
     Streamlit UI for the embedding visualizer
@@ -470,12 +536,62 @@ def embedding_visualizer_ui():
         help="Type of embedding to visualize",
     )
 
-    # Artist filter
-    artist_filter = st.sidebar.text_input(
-        "Filter by Artist",
-        value="",
-        help="Only include songs by this artist (case insensitive)",
-    )
+    # Artist Filter Section
+    st.session_state.available_artists_for_viz = get_all_artists_from_csv()
+
+    if not st.session_state.available_artists_for_viz:
+        st.sidebar.warning("No artists found in metadata to filter by.")
+        artist_filter_for_visualization = []
+    else:
+        # Initialize session state for selected artists and focus selectbox if they don't exist
+        if 'selected_artists_for_viz' not in st.session_state:
+            st.session_state.selected_artists_for_viz = st.session_state.available_artists_for_viz[:]
+        if 'quick_focus_artist_selectbox_value' not in st.session_state:
+            st.session_state.quick_focus_artist_selectbox_value = "(Focus Off)"
+        if 'artist_multiselect_widget_value' not in st.session_state: # For direct binding from multiselect
+            st.session_state.artist_multiselect_widget_value = st.session_state.selected_artists_for_viz[:]
+
+        st.sidebar.subheader("Artist Filter")
+
+        # Ensure selected_artists_for_viz is always a subset of available_artists_for_viz
+        # This handles cases where CSV might change and previously selected artists are no longer available.
+        st.session_state.selected_artists_for_viz = [
+            artist for artist in st.session_state.selected_artists_for_viz 
+            if artist in st.session_state.available_artists_for_viz
+        ]
+        # If selection became empty and it wasn't intentionally emptied, re-select all
+        if not st.session_state.selected_artists_for_viz and st.session_state.available_artists_for_viz and not st.session_state.get('user_deselected_all', False):
+             st.session_state.selected_artists_for_viz = st.session_state.available_artists_for_viz[:]
+        st.session_state.pop('user_deselected_all', None) # Reset flag
+
+        # Update multiselect key to reflect current selection state for proper rendering
+        st.session_state.artist_multiselect_widget_value = st.session_state.selected_artists_for_viz[:]
+
+        col1_toggle, col2_focus = st.sidebar.columns([1,2]) # Adjust column width ratio if needed
+
+        with col1_toggle:
+            st.button("Toggle All", on_click=manage_artist_toggle, key="toggle_artists_button")
+
+        with col2_focus:
+            focus_options = ["(Focus Off)"] + st.session_state.available_artists_for_viz
+            st.selectbox(
+                "Quick Focus",
+                options=focus_options,
+                key="quick_focus_artist_selectbox_value", # Bind directly to session state key
+                on_change=manage_quick_focus_change,
+                help="Select one artist to focus on, deselecting others."
+            )
+
+        # Artist Multiselect
+        st.sidebar.multiselect(
+            "Select Artists:",
+            options=st.session_state.available_artists_for_viz,
+            key="artist_multiselect_widget_value", # Bind directly to session state key
+            on_change=manage_multiselect_change,
+            help="Select one or more artists to include in the visualization."
+        )
+        # The source of truth for filtering is selected_artists_for_viz, updated by callbacks
+        artist_filter_for_visualization = st.session_state.selected_artists_for_viz
 
     # Chunk filtering options
     exclude_last_chunk = st.sidebar.checkbox(
@@ -517,7 +633,7 @@ def embedding_visualizer_ui():
                 embeddings_dir=embeddings_dir,
                 embedding_type=embedding_type,
                 exclude_last_chunk=exclude_last_chunk,
-                artist_filter=artist_filter if artist_filter else None,
+                artist_filter=artist_filter_for_visualization, # Use the new list-based filter
                 only_first_chunk=only_first_chunk,
                 color_selection=color_selection,
                 show_lines=show_lines,
