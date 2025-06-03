@@ -15,6 +15,9 @@ import pandas as pd
 import streamlit as st
 from umap import UMAP
 
+# Global toggle for verbose info messages
+SHOW_VERBOSE_INFO = False
+
 
 def get_all_artists_from_csv():
     """
@@ -40,6 +43,7 @@ def get_all_artists_from_csv():
             )
             # Remove 'Unknown Artist' if it's only there due to empty strings and not a real entry, if desired
             # For now, it will be included if present.
+
             return artists
         else:
             # Log to sidebar or main page depending on context if Streamlit elements are used here
@@ -122,6 +126,7 @@ def load_embeddings(embeddings_dir):
         Dictionary with video IDs as keys and dictionaries of chunk embeddings as values
     """
     all_embeddings = {}
+    failed_files = []  # Initialize list to store names of files that failed to load
 
     # Find all .npz files in the embeddings directory
     # The pattern is: {uuid}_{chunk_number}_{start_second}_{end_second}.npz
@@ -131,7 +136,8 @@ def load_embeddings(embeddings_dir):
         st.warning(f"No embedding files found in {embeddings_dir}")
         return all_embeddings
 
-    st.info(f"Found {len(embedding_files)} embedding files")
+    if SHOW_VERBOSE_INFO:
+        st.info(f"Found {len(embedding_files)} embedding files")
 
     for file_path in embedding_files:
         # Extract video ID and chunk number from filename
@@ -165,13 +171,14 @@ def load_embeddings(embeddings_dir):
                 st.warning(f"File {basename} does not contain 'embedding' key")
         except Exception as e:
             st.error(f"Error loading embedding from {basename}: {e}")
+            failed_files.append(basename)
 
     # Print some statistics
-    num_videos = len(all_embeddings)
-    total_chunks = sum(len(chunks) for chunks in all_embeddings.values())
-    st.info(
-        f"Loaded embeddings for {num_videos} videos with {total_chunks} total chunks"
-    )
+    if SHOW_VERBOSE_INFO:
+        st.info(
+            f"Loaded {len(all_embeddings)} videos with embeddings. "
+            f"{len(failed_files)} files failed to load."
+        )
 
     return all_embeddings
 
@@ -220,7 +227,8 @@ def get_metadata_from_csv(video_ids):
             except Exception as e:
                 st.error(f"Error processing row in CSV: {e}")
 
-        st.info(f"Found metadata for {matched_count} out of {len(video_ids)} UUIDs")
+        if SHOW_VERBOSE_INFO:
+            st.info(f"Found metadata for {matched_count} out of {len(video_ids)} UUIDs")
     except Exception as e:
         st.error(f"Error reading CSV file: {e}")
 
@@ -333,14 +341,16 @@ def create_embedding_visualization(
         song_filter: Optional list of song names to filter by. If None or empty, no song filter is applied.
         only_first_chunk: If True, only include the first chunk from each video
         color_selection: Attribute to color points by (e.g., 'song_name', 'artist')
-        show_lines: Boolean to show connecting lines between chunks
-        show_chunk_numbers: Boolean to show chunk numbers on points
-        show_only_selected_artist_labels: Boolean to only show labels for selected artists
-        debug: Boolean to enable debug mode
+        help="Toggle whether to show connecting lines between segments of the same audio.",
+    )
+    show_chunk_numbers: Boolean to show chunk numbers on points
+    show_only_selected_artist_labels: Boolean to only show labels for selected artists
+    debug: Boolean to enable debug mode
 
     Returns:
         Altair chart object or None if visualization couldn't be created
     """
+
     # Load all embeddings
     all_embeddings = load_embeddings(embeddings_dir)
     if not all_embeddings:
@@ -402,19 +412,22 @@ def create_embedding_visualization(
 
     # Apply artist filter if provided and not empty
     if artist_filter and isinstance(artist_filter, list) and len(artist_filter) > 0:
-        st.info(f"Filtering by artists: {', '.join(artist_filter)}")
+        if SHOW_VERBOSE_INFO:
+            st.info(f"Filtering by artists: {', '.join(artist_filter)}")
         total_points_before_artist_filter = len(df)
-        unique_songs_before_artist_filter = df["song_name"].nunique()
+        unique_artists_before_artist_filter = df["artist"].nunique()
         df = df[df["artist"].isin(artist_filter)]
         filtered_points_after_artist_filter = len(df)
-        unique_songs_after_artist_filter = df["song_name"].nunique()
+        unique_artists_after_artist_filter = df["artist"].nunique()
 
-        st.info(
-            f"Filtered from {total_points_before_artist_filter} points to {filtered_points_after_artist_filter} points based on artist selection."
-        )
-        st.info(
-            f"Filtered from {unique_songs_before_artist_filter} songs to {unique_songs_after_artist_filter} songs based on artist selection."
-        )
+        if SHOW_VERBOSE_INFO:
+            st.info(
+                f"Filtered from {total_points_before_artist_filter} points to {filtered_points_after_artist_filter} points based on artist selection."
+            )
+        if SHOW_VERBOSE_INFO:
+            st.info(
+                f"Filtered from {unique_artists_before_artist_filter} artists to {unique_artists_after_artist_filter} artists based on artist selection."
+            )
         if df.empty:
             st.warning(
                 "No data points remaining after artist filtering. Please adjust your selection."
@@ -425,17 +438,20 @@ def create_embedding_visualization(
     if song_filter and isinstance(song_filter, list) and len(song_filter) > 0:
         total_points_before_song_filter = len(df)
         unique_songs_before_song_filter = df["song_name"].nunique()
-        st.info(f"Applying song filter: {song_filter}")
+        if SHOW_VERBOSE_INFO:
+            st.info(f"Applying song filter: {song_filter}")
         df = df[df["song_name"].isin(song_filter)]
         filtered_points_after_song_filter = len(df)
         unique_songs_after_song_filter = df["song_name"].nunique()
 
-        st.info(
-            f"Filtered from {total_points_before_song_filter} points to {filtered_points_after_song_filter} points based on song selection."
-        )
-        st.info(
-            f"Filtered from {unique_songs_before_song_filter} songs to {unique_songs_after_song_filter} songs based on song selection."
-        )
+        if SHOW_VERBOSE_INFO:
+            st.info(
+                f"Filtered from {total_points_before_song_filter} points to {filtered_points_after_song_filter} points based on song selection."
+            )
+        if SHOW_VERBOSE_INFO:
+            st.info(
+                f"Filtered from {unique_songs_before_song_filter} songs to {unique_songs_after_song_filter} songs based on song selection."
+            )
         if df.empty:
             st.warning(
                 "No data points remaining after song filtering. Please adjust your selection."
@@ -446,17 +462,20 @@ def create_embedding_visualization(
     if maqam_filter and isinstance(maqam_filter, list) and len(maqam_filter) > 0:
         total_points_before_maqam_filter = len(df)
         unique_maqams_before_maqam_filter = df["maqam"].nunique()
-        st.info(f"Applying maqam filter: {maqam_filter}")
+        if SHOW_VERBOSE_INFO:
+            st.info(f"Applying maqam filter: {maqam_filter}")
         df = df[df["maqam"].isin(maqam_filter)]
         filtered_points_after_maqam_filter = len(df)
         unique_maqams_after_maqam_filter = df["maqam"].nunique()
 
-        st.info(
-            f"Filtered from {total_points_before_maqam_filter} points to {filtered_points_after_maqam_filter} points based on maqam selection."
-        )
-        st.info(
-            f"Filtered from {unique_maqams_before_maqam_filter} maqams to {unique_maqams_after_maqam_filter} maqams based on maqam selection."
-        )
+        if SHOW_VERBOSE_INFO:
+            st.info(
+                f"Filtered from {total_points_before_maqam_filter} points to {filtered_points_after_maqam_filter} points based on maqam selection."
+            )
+        if SHOW_VERBOSE_INFO:
+            st.info(
+                f"Filtered from {unique_maqams_before_maqam_filter} maqams to {unique_maqams_after_maqam_filter} maqams based on maqam selection."
+            )
         if df.empty:
             st.warning(
                 "No data points remaining after maqam filtering. Please adjust your selection."
@@ -532,7 +551,9 @@ def create_embedding_visualization(
         .encode(
             color=alt.Color(
                 f"{color_selection}:N",
-                legend=alt.Legend(title=color_selection.replace("_", " ").title()),
+                legend=alt.Legend(
+                    title=color_selection.replace("_", " ").title(),
+                ),
             ),
             tooltip=[
                 "video_id:N",  # For UUID
@@ -612,6 +633,17 @@ def embedding_visualizer_ui():
     """
     Streamlit UI for the embedding visualizer
     """
+    global SHOW_VERBOSE_INFO
+
+    # Initialize session state for the verbose info checkbox if it's not already set.
+    # This ensures that on the first run of a new session, it takes the global default (False).
+    # The global SHOW_VERBOSE_INFO (defined at the top of the script) is used as this default.
+    if "show_verbose_info_checkbox_val" not in st.session_state:
+        st.session_state.show_verbose_info_checkbox_val = SHOW_VERBOSE_INFO # Uses the global SHOW_VERBOSE_INFO
+
+    # Synchronize the function-scoped SHOW_VERBOSE_INFO with the session state.
+    # On a fresh session, this will be the default. On refreshes, it will be the persisted value.
+    SHOW_VERBOSE_INFO = st.session_state.show_verbose_info_checkbox_val
 
     # Get the project directory
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -621,7 +653,7 @@ def embedding_visualizer_ui():
     default_embeddings_dir = os.path.join(project_dir, "data", "embeddings")
 
     # Sidebar for configuration
-    st.sidebar.header("Visualization Settings")
+    st.sidebar.markdown("## Visualization Settings")
 
     # Embeddings directory input
     embeddings_dir = st.sidebar.text_input(
@@ -637,43 +669,24 @@ def embedding_visualizer_ui():
     )
 
     # Artist Filter Section
-
-    # 1. Get current available artists (options for the multiselect)
     current_artist_options = get_all_artists_from_csv()
-
-    # 2. Initialize or update the multiselect's actual selected values in session state
-    # 'multiselect_artist_value' is the key bound to the widget.
     if "multiselect_artist_value" not in st.session_state:
-        # First time for this session: default to all artists selected.
         st.session_state.multiselect_artist_value = current_artist_options[:]
     else:
-        # Session state exists: reconcile it with current available options.
-        # This ensures that if the user cleared the selection (it's []), it remains [].
-        # It also removes any selected artists that are no longer in current_artist_options.
         st.session_state.multiselect_artist_value = [
             artist
             for artist in st.session_state.multiselect_artist_value
             if artist in current_artist_options
         ]
-        # Edge case: if current_artist_options is now empty (e.g. CSV cleared),
-        # multiselect_artist_value should also be empty.
         if not current_artist_options:
             st.session_state.multiselect_artist_value = []
-
-    # 3. Initialize 'selected_artists_for_filter' (used by visualization logic)
-    # This is primarily set by the callback. Initialize if it doesn't exist, from the
-    # (now definite) state of 'multiselect_artist_value'.
     if "selected_artists_for_filter" not in st.session_state:
         st.session_state.selected_artists_for_filter = (
             st.session_state.multiselect_artist_value[:]
         )
-    # Note: The callback 'callback_multiselect_artists' will ensure
-    # 'selected_artists_for_filter' tracks 'multiselect_artist_value' after user interactions.
-
-    # --- UI Rendering for Artist Filter ---
-    if not current_artist_options:  # Check the fresh list for UI decision
+    if not current_artist_options:
         st.sidebar.warning("No artists found in metadata to filter by.")
-        artist_filter_for_visualization = []  # Ensure this is empty if no options
+        artist_filter_for_visualization = []
     else:
         with st.sidebar.expander("Filter by Artist", expanded=False):
             st.multiselect(
@@ -681,17 +694,13 @@ def embedding_visualizer_ui():
                 options=current_artist_options,
                 key="multiselect_artist_value",
                 on_change=callback_multiselect_artists,
-                # No 'default' needed here, as 'st.session_state.multiselect_artist_value' is managed above
             )
-    # Use .get for safety for the variable passed to the visualization function.
-    # It should be correctly populated by the logic above or the callback.
     artist_filter_for_visualization = st.session_state.get(
         "selected_artists_for_filter", []
     )
 
     # --- Song Filter Section ---
     current_song_options = get_all_songs_from_csv()
-
     if "multiselect_song_value" not in st.session_state:
         st.session_state.multiselect_song_value = current_song_options[:]
     else:
@@ -702,17 +711,13 @@ def embedding_visualizer_ui():
         ]
         if not current_song_options:
             st.session_state.multiselect_song_value = []
-
     if "selected_songs_for_filter" not in st.session_state:
         st.session_state.selected_songs_for_filter = (
             st.session_state.multiselect_song_value[:]
         )
-
-    # Ensure selected_songs_for_filter is synced if multiselect_song_value changed programmatically
     st.session_state.selected_songs_for_filter = (
         st.session_state.multiselect_song_value[:]
     )
-
     if not current_song_options:
         st.sidebar.warning("No songs found in metadata to filter by.")
         song_filter_for_visualization = []
@@ -730,7 +735,6 @@ def embedding_visualizer_ui():
 
     # --- Maqam Filter Section ---
     current_maqam_options = get_all_maqams_from_csv()
-
     if "multiselect_maqam_value" not in st.session_state:
         st.session_state.multiselect_maqam_value = current_maqam_options[:]
     else:
@@ -741,17 +745,13 @@ def embedding_visualizer_ui():
         ]
         if not current_maqam_options:
             st.session_state.multiselect_maqam_value = []
-
     if "selected_maqams_for_filter" not in st.session_state:
         st.session_state.selected_maqams_for_filter = (
             st.session_state.multiselect_maqam_value[:]
         )
-
-    # Ensure selected_maqams_for_filter is synced if multiselect_maqam_value changed programmatically
     st.session_state.selected_maqams_for_filter = (
         st.session_state.multiselect_maqam_value[:]
     )
-
     if not current_maqam_options:
         st.sidebar.warning("No maqams found in metadata to filter by.")
         maqam_filter_for_visualization = []
@@ -771,9 +771,9 @@ def embedding_visualizer_ui():
     exclude_last_chunk = st.sidebar.checkbox(
         "Exclude Last Segment",
         value=True,
-        help="Exclude the last segment from each song",
+        help="You may want to exclude the last segment from each taqsim as it may "
+        "partially contain silence and that will skew the visualization.",
     )
-
     only_first_chunk = st.sidebar.checkbox(
         "Only First Segment",
         value=False,
@@ -783,19 +783,30 @@ def embedding_visualizer_ui():
     st.sidebar.markdown("---")  # Separator
     st.sidebar.subheader("Chart Appearance")
 
-    # Color by selection
     color_selection = st.sidebar.selectbox(
         "Color by:",
         ["song_name", "artist", "maqam", "type", "electric", "vintage"],
         index=0,
         help="Attribute to color points by",
     )
-
-    # Toggle for showing connecting lines
     show_lines = st.sidebar.checkbox("Show connecting lines", value=True)
-
-    # Toggle for showing chunk numbers
     show_chunk_numbers = st.sidebar.checkbox("Show Segment Numbers", value=True)
+
+    st.sidebar.markdown("---")  # Separator
+
+    # Checkbox to control the global SHOW_VERBOSE_INFO variable.
+    # Set its 'value' directly from SHOW_VERBOSE_INFO (which is False at this point on a refresh).
+    # The 'key' allows Streamlit to manage its state in st.session_state upon interaction.
+    st.sidebar.checkbox(
+        "Show Detailed Info Messages",
+        key="show_verbose_info_checkbox_val",  # Session state (initialized above or persisted) drives the value
+        help="Toggle the display of detailed informational messages during processing."
+    )
+    
+    # After the checkbox widget, update SHOW_VERBOSE_INFO from session state.
+    # This ensures that if the user interacted with the checkbox, that state is used
+    # for the rest of this script run.
+    SHOW_VERBOSE_INFO = st.session_state.show_verbose_info_checkbox_val
 
     # Create a placeholder for the visualization
     chart_placeholder = st.empty()
@@ -811,7 +822,7 @@ def embedding_visualizer_ui():
                 exclude_last_chunk=exclude_last_chunk,
                 artist_filter=artist_filter_for_visualization,
                 song_filter=song_filter_for_visualization,
-                maqam_filter=maqam_filter_for_visualization,  # Pass the selected maqams
+                maqam_filter=maqam_filter_for_visualization,
                 only_first_chunk=only_first_chunk,
                 color_selection=color_selection,
                 show_lines=show_lines,
@@ -819,10 +830,8 @@ def embedding_visualizer_ui():
             )
 
             if chart:
-                # Display the chart in the placeholder
                 chart_placeholder.altair_chart(chart, use_container_width=True)
 
-                # Download button has been removed as per user request.
 
 
 if __name__ == "__main__":
