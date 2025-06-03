@@ -5,7 +5,8 @@ Audio Processing Pipeline
 This script orchestrates the full audio processing pipeline:
 1. Downloads YouTube audio using UUIDs
 2. Removes silence from the beginning and end of audio files
-3. Processes audio for classification (optional)
+3. Splits audio into overlapping chunks for analysis
+4. Processes audio for classification (optional)
 
 The pipeline processes a CSV file with 'link' and 'uuid' columns.
 """
@@ -15,24 +16,26 @@ import os
 from pathlib import Path
 
 import pandas as pd
+from audio_chunker import chunk_audio_file, create_chunks_directory
 from silence_remover import create_processed_directory, process_audio_file
 from youtube_downloader import create_download_directory, download_youtube_audio
 
 
-def process_single_item(youtube_url, uuid, downloads_dir, processed_dir):
+def process_single_item(
+    youtube_url, uuid, downloads_dir, processed_dir, chunks_dir=None
+):
     """
     Process a single YouTube URL through the pipeline:
     1. Download audio
     2. Remove silence
+    3. Split into chunks
 
     Args:
         youtube_url: URL of the YouTube video
         uuid: Unique identifier for the file
         downloads_dir: Directory to save downloaded audio
         processed_dir: Directory to save processed audio
-
-    Returns:
-        Tuple of (downloaded_file_path, processed_file_path) or (None, None) if failed
+        chunks_dir: Directory to save audio chunks
     """
     print(f"\nProcessing item with UUID: {uuid}")
     print(f"YouTube URL: {youtube_url}")
@@ -43,7 +46,7 @@ def process_single_item(youtube_url, uuid, downloads_dir, processed_dir):
     )
     if not downloaded_file:
         print(f"Failed to download audio for UUID: {uuid}")
-        return None, None
+        return
 
     # Report appropriate message based on whether file was newly downloaded or already existed
     if is_new_download:
@@ -58,14 +61,28 @@ def process_single_item(youtube_url, uuid, downloads_dir, processed_dir):
     success = process_audio_file(downloaded_file, processed_file)
     if not success:
         print(f"Failed to process audio for UUID: {uuid}")
-        return downloaded_file, None
+        return
 
     print(f"Successfully processed: {processed_file}")
-    return downloaded_file, processed_file
+
+    # Step 3: Create audio chunks
+    if chunks_dir is None:
+        chunks_dir = create_chunks_directory()
+
+    print(f"Creating audio chunks from: {processed_file}")
+    chunk_paths = chunk_audio_file(
+        processed_file, output_dir=chunks_dir, chunk_duration=30, uuid=uuid
+    )
+
+    if not chunk_paths:
+        print(f"Failed to create chunks for UUID: {uuid}")
+        return
+
+    print(f"Successfully created {len(chunk_paths)} chunks")
 
 
 def process_csv_file(
-    csv_file, downloads_dir=None, processed_dir=None, process_all=False
+    csv_file, downloads_dir=None, processed_dir=None, chunks_dir=None, process_all=False
 ):
     """
     Process all items in a CSV file through the pipeline.
@@ -74,10 +91,11 @@ def process_csv_file(
         csv_file: Path to the CSV file containing YouTube URLs and UUIDs
         downloads_dir: Directory to save downloaded audio
         processed_dir: Directory to save processed audio
+        chunks_dir: Directory to save audio chunks
         process_all: Whether to process all items or just the first one
 
     Returns:
-        List of successfully processed items
+        None
     """
     try:
         # Create directories if not provided
@@ -86,6 +104,9 @@ def process_csv_file(
 
         if processed_dir is None:
             processed_dir = create_processed_directory()
+
+        if chunks_dir is None:
+            chunks_dir = create_chunks_directory()
 
         # Read the CSV file
         df = pd.read_csv(csv_file)
@@ -106,7 +127,6 @@ def process_csv_file(
             return []
 
         # Process each row
-        processed_items = []
 
         # If process_all is True, process all rows. Otherwise, just take the first row.
         rows_to_process = (
@@ -119,38 +139,18 @@ def process_csv_file(
                 break
 
             try:
-                url = row["link"]
+                youtube_url = row["link"]
                 uuid = row["uuid"]
-
-                # Skip rows with missing UUID
-                if pd.isna(uuid) or not uuid:
-                    print(f"\nSkipping row {index}: Missing UUID for URL {url}")
-                    continue
-
-                # Add song name info if available
-                song_info = (
-                    f" - {row['song_name']}"
-                    if "song_name" in df.columns and not pd.isna(row["song_name"])
-                    else ""
-                )
-                print(f"\nProcessing YouTube URL: {url}{song_info} (UUID: {uuid})")
+                print(f"\nProcessing item {index + 1}/{len(df)}: {uuid}")
 
                 # Process the item
-                downloaded_file, processed_file = process_single_item(
-                    url, uuid, downloads_dir, processed_dir
+                process_single_item(
+                    youtube_url,
+                    uuid,
+                    downloads_dir,
+                    processed_dir,
+                    chunks_dir,
                 )
-
-                if processed_file:
-                    processed_items.append(
-                        {
-                            "uuid": uuid,
-                            "url": url,
-                            "downloaded_file": downloaded_file,
-                            "processed_file": processed_file,
-                        }
-                    )
-                else:
-                    print(f"Failed to process item with UUID: {uuid}")
 
             except Exception as e:
                 print(f"Error processing row {index}: {e}")
@@ -162,11 +162,8 @@ def process_csv_file(
                 "Processed first item only. Use --process-mode=all to process all items."
             )
 
-        return processed_items
-
     except Exception as e:
         print(f"Error processing CSV file: {e}")
-        return []
 
 
 def main():
@@ -188,6 +185,10 @@ def main():
     parser.add_argument(
         "--processed-dir",
         help="Directory to save processed audio files",
+    )
+    parser.add_argument(
+        "--chunks-dir",
+        help="Directory to save audio chunks",
     )
     parser.add_argument(
         "--process-mode",
@@ -213,19 +214,29 @@ def main():
     else:
         processed_dir = create_processed_directory()
 
+    chunks_dir = None
+    if args.chunks_dir:
+        chunks_dir = args.chunks_dir
+        os.makedirs(chunks_dir, exist_ok=True)
+    else:
+        chunks_dir = create_chunks_directory()
+
     if args.url:
         # Process a single URL
         if not args.uuid:
             print("Error: --uuid parameter is required when using --url")
             return
 
-        process_single_item(args.url, args.uuid, downloads_dir, processed_dir)
+        process_single_item(
+            args.url, args.uuid, downloads_dir, processed_dir, chunks_dir
+        )
     elif args.csv:
         # Process the CSV file
         process_csv_file(
             args.csv,
             downloads_dir=downloads_dir,
             processed_dir=processed_dir,
+            chunks_dir=chunks_dir,
             process_all=(args.process_mode == "all"),
         )
     else:
@@ -238,6 +249,7 @@ def main():
                 default_csv_path,
                 downloads_dir=downloads_dir,
                 processed_dir=processed_dir,
+                chunks_dir=chunks_dir,
                 process_all=(args.process_mode == "all"),
             )
         else:

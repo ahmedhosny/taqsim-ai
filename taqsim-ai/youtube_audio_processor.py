@@ -16,6 +16,9 @@ from pathlib import Path
 import librosa
 import numpy as np
 import pandas as pd
+
+# Import chunking functionality from audio_chunker
+from audio_chunker import chunk_audio_file
 from transformers import pipeline
 
 
@@ -43,139 +46,64 @@ def create_directories():
 
 # Note: download_youtube_audio is now imported from youtube_downloader module
 
-
 # Note: Silence removal functionality has been moved to silence_remover.py
 
+# Note: Audio chunking functionality has been moved to audio_chunker.py
 
-def process_audio(audio_file, target_sr=16000, chunk_duration=30, step_size=1):
+
+def classify_audio_files(audio_file_paths, extract_embeddings=False):
     """
-    Process audio file:
-    1. Load and convert to target sample rate
-    2. Split into overlapping chunks of specified duration with step size
-
-    Note: Silence removal has been moved to the separate silence_remover.py utility
+    Classify audio files using the MAEST model.
 
     Args:
-        audio_file: Path to the audio file
-        target_sr: Target sample rate in Hz
-        chunk_duration: Duration of each chunk in seconds
-        step_size: Step size between consecutive chunks in seconds
+        audio_file_paths: List of paths to audio files
+        extract_embeddings: Whether to also extract embeddings from the model
 
     Returns:
-        List of audio chunks as numpy arrays
+        Tuple of (classification results, embeddings_dict) if extract_embeddings is True,
+        otherwise just classification results
     """
-    print(f"Processing audio file: {audio_file}")
-    try:
-        # Try to convert webm to wav first if it's a webm file
-        converted_file = audio_file
-        if audio_file.lower().endswith(".webm"):
-            try:
-                import subprocess
+    print("Loading audio classification model...")
+    pipe = pipeline(
+        "audio-classification",
+        model="mtg-upf/discogs-maest-30s-pw-129e",
+        trust_remote_code=True,
+    )
 
-                wav_file = audio_file.rsplit(".", 1)[0] + ".wav"
-                print(f"Attempting to convert webm to wav: {wav_file}")
+    results = []
+    chunks = []
 
-                try:
-                    # Try using ffmpeg if available
-                    subprocess.run(
-                        [
-                            "ffmpeg",
-                            "-i",
-                            audio_file,
-                            "-acodec",
-                            "pcm_s16le",
-                            "-ar",
-                            str(target_sr),
-                            wav_file,
-                        ],
-                        check=True,
-                        capture_output=True,
-                    )
-                    converted_file = wav_file
-                    print("Successfully converted to wav using ffmpeg")
-                except (subprocess.SubprocessError, FileNotFoundError):
-                    print(
-                        "FFmpeg conversion failed, will try to process the original file"
-                    )
-            except Exception as conv_e:
-                print(f"Error during conversion: {conv_e}")
+    # First load all audio files
+    for i, file_path in enumerate(audio_file_paths):
+        print(f"Loading audio file {i + 1}/{len(audio_file_paths)}: {file_path}")
+        try:
+            # Load audio file with librosa
+            audio, sr = librosa.load(file_path, sr=16000, mono=True)
+            chunks.append(audio)
 
-        print(f"Loading audio file: {converted_file}")
-        # Set duration=None to load the entire file
-        audio, sr = librosa.load(converted_file, sr=target_sr, mono=True)
-        print(
-            f"Loaded audio file with sample rate {sr} Hz, duration: {len(audio) / sr:.2f}s"
-        )
+            # Classify the audio
+            print(f"Classifying chunk {i + 1}/{len(audio_file_paths)}...")
+            result = pipe(audio)
+            results.append(result)
 
-        # Note: Silence removal has been moved to silence_remover.py
-        if len(audio) == 0:
-            raise ValueError("Loaded audio has zero length")
+            # Print top 3 predictions for this chunk
+            print(f"\nChunk {i + 1} Classification Results:")
+            for pred in result[:3]:
+                print(f"Label: {pred['label']}, Score: {pred['score']:.4f}")
 
-        print(
-            f"Successfully loaded audio: {len(audio) / target_sr:.2f} seconds at {target_sr}Hz"
-        )
+        except Exception as e:
+            print(f"Error processing file {file_path}: {e}")
+            import traceback
 
-        # Calculate chunk size and step size in samples
-        chunk_size = chunk_duration * target_sr
-        step_samples = step_size * target_sr
+            traceback.print_exc()
 
-        # Calculate total number of chunks
-        total_chunks = max(1, 1 + (len(audio) - chunk_size) // step_samples)
+    # Extract embeddings if requested
+    if extract_embeddings and chunks:
+        print("\nExtracting embeddings from the model...")
+        embeddings_dict = extract_embeddings_from_maest(chunks)
+        return results, embeddings_dict
 
-        # Split audio into overlapping chunks
-        chunks = []
-        for i in range(total_chunks):
-            start_idx = i * step_samples
-            end_idx = min(start_idx + chunk_size, len(audio))
-
-            # Extract the chunk
-            chunk = audio[start_idx:end_idx]
-
-            # If chunk is shorter than chunk_size, pad with zeros
-            if len(chunk) < chunk_size:
-                chunk = np.pad(chunk, (0, chunk_size - len(chunk)), "constant")
-
-            chunks.append(chunk)
-
-        print(
-            f"Split audio into {len(chunks)} overlapping chunks of {chunk_duration} seconds each (step size: {step_size}s)"
-        )
-
-        return chunks
-    except Exception as e:
-        print(f"Error processing audio: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return []
-
-
-def save_audio_chunks(
-    chunks, output_dir="audio_chunks", base_filename="chunk", sr=16000
-):
-    """
-    Save audio chunks to disk.
-
-    Args:
-        chunks: List of audio chunks as numpy arrays
-        output_dir: Directory to save the chunks
-        base_filename: Base name for the chunk files
-        sr: Sample rate of the audio chunks
-
-    Returns:
-        List of paths to the saved chunk files
-    """
-    import soundfile as sf
-
-    chunk_paths = []
-    for i, chunk in enumerate(chunks):
-        # Use i+1 to start numbering from 1 instead of 0
-        chunk_path = os.path.join(output_dir, f"{base_filename}_{i + 1:03d}.wav")
-        sf.write(chunk_path, chunk, sr, "PCM_16")
-        chunk_paths.append(chunk_path)
-
-    print(f"Saved {len(chunks)} audio chunks to {output_dir}")
-    return chunk_paths
+    return results
 
 
 def extract_embeddings_from_maest(
@@ -414,22 +342,22 @@ def process_youtube_link(youtube_url, extract_embeddings=True, uuid=None):
         return None
 
     # Process audio and remove silence
-    chunks = process_audio(audio_file, step_size=1)
-    if not chunks:
+    # Use the new chunking functionality from audio_chunker.py
+    audio_chunks_dir = create_directories()[0]  # Get the audio chunks directory
+    chunk_paths = chunk_audio_file(audio_file, output_dir=audio_chunks_dir, uuid=uuid)
+
+    # If chunking failed, return early
+    if not chunk_paths:
+        print(f"Failed to create chunks from {audio_file}")
         return None
 
     # Use the UUID for naming files
     file_id = uuid
 
-    # Save chunks
-    save_audio_chunks(
-        chunks, output_dir=audio_chunks_dir, base_filename=f"youtube_{file_id}"
-    )
-
-    # Classify chunks and optionally extract embeddings
+    # Classify chunk files and optionally extract embeddings
     if extract_embeddings:
-        results, embeddings_dict = classify_audio_chunks(
-            chunks, extract_embeddings=True
+        results, embeddings_dict = classify_audio_files(
+            chunk_paths, extract_embeddings=True
         )
 
         # Create embeddings directory if it doesn't exist
@@ -443,7 +371,7 @@ def process_youtube_link(youtube_url, extract_embeddings=True, uuid=None):
         save_embeddings_to_file(embeddings_dict, output_file=embeddings_file)
         print(f"Embeddings saved to: {embeddings_file}")
     else:
-        results = classify_audio_chunks(chunks, extract_embeddings=False)
+        results = classify_audio_files(chunk_paths, extract_embeddings=False)
 
     # Save results to genre_classifications directory
     results_file = os.path.join(
