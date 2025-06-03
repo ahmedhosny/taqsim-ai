@@ -44,67 +44,16 @@ def create_directories():
 # Note: download_youtube_audio is now imported from youtube_downloader module
 
 
-def remove_silence(audio, sr, threshold_db=40, min_silence_duration=0.5):
-    """
-    Remove silence from the beginning and end of an audio signal only.
-    Preserves all audio content (including silences) in the middle of the track.
-    Uses librosa's trim function which is specifically designed for trimming silence
-    at the beginning and end of audio.
-
-    Args:
-        audio: Audio signal as numpy array
-        sr: Sample rate of the audio
-        threshold_db: Threshold in decibels below reference to consider as silence (positive value)
-        min_silence_duration: Minimum duration of silence in seconds (not used in trim method)
-
-    Returns:
-        Trimmed audio signal with silence removed only from beginning and end
-    """
-    print("Removing silence from beginning and end of audio only...")
-
-    # First attempt with the specified threshold
-    trimmed_audio, trim_indices = librosa.effects.trim(
-        audio, top_db=threshold_db, frame_length=2048, hop_length=512
-    )
-
-    # If trimming removed too much (resulting in very short audio), try with a more lenient threshold
-    if len(trimmed_audio) / sr < 10.0:  # at least 10 seconds
-        more_lenient_threshold = (
-            threshold_db - 10
-        )  # Lower threshold to detect more sounds
-        print(
-            f"First trim resulted in very short audio. Trying more lenient threshold: {more_lenient_threshold}dB"
-        )
-        trimmed_audio, trim_indices = librosa.effects.trim(
-            audio, top_db=more_lenient_threshold, frame_length=2048, hop_length=512
-        )
-
-    # If still too short or no trimming occurred, return original
-    if len(trimmed_audio) / sr < 5.0 or len(trimmed_audio) == len(audio):
-        print("Minimal or no trimming possible, returning original audio")
-        return audio
-
-    # Get the start and end indices
-    start_sample, end_sample = trim_indices
-
-    # Convert to time for logging
-    start_time = start_sample / sr
-    end_time = (len(audio) - end_sample) / sr
-    duration = len(trimmed_audio) / sr
-
-    print(f"Trimmed {start_time:.2f}s from beginning and {end_time:.2f}s from end")
-    print(f"New audio duration: {duration:.2f}s")
-
-    # Return the trimmed audio - this only removes silence from beginning and end
-    return trimmed_audio
+# Note: Silence removal functionality has been moved to silence_remover.py
 
 
 def process_audio(audio_file, target_sr=16000, chunk_duration=30, step_size=1):
     """
     Process audio file:
     1. Load and convert to target sample rate
-    2. Remove silence from beginning and end
-    3. Split into overlapping chunks of specified duration with step size
+    2. Split into overlapping chunks of specified duration with step size
+
+    Note: Silence removal has been moved to the separate silence_remover.py utility
 
     Args:
         audio_file: Path to the audio file
@@ -158,8 +107,7 @@ def process_audio(audio_file, target_sr=16000, chunk_duration=30, step_size=1):
             f"Loaded audio file with sample rate {sr} Hz, duration: {len(audio) / sr:.2f}s"
         )
 
-        # Remove silence from beginning and end
-        audio = remove_silence(audio, sr)
+        # Note: Silence removal has been moved to silence_remover.py
         if len(audio) == 0:
             raise ValueError("Loaded audio has zero length")
 

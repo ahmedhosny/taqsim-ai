@@ -7,11 +7,8 @@ using yt-dlp with appropriate error handling and file management.
 Can be run as a standalone script to download YouTube audio from a CSV file.
 """
 
-import argparse
 import os
-from pathlib import Path
 
-import pandas as pd
 import yt_dlp
 
 
@@ -102,17 +99,20 @@ def download_youtube_audio(youtube_url, output_path=None, uuid=None):
 
     print(f"Processing YouTube URL: {youtube_url} with UUID: {uuid}")
 
-    # Use the downloads directory if no output path is specified
+    # Ensure output_path is provided
     if output_path is None:
-        output_path = create_download_directory()
+        raise ValueError("output_path must be provided")
 
     try:
-        # Check if the file is already downloaded
+        # Check if the file already exists
         for file in os.listdir(output_path):
             if uuid in file:
                 existing_file = os.path.join(output_path, file)
-                print(f"File already downloaded: {existing_file}")
-                return existing_file
+                print(f"File already exists: {existing_file}")
+                return (
+                    existing_file,
+                    False,
+                )  # False indicates file was not newly downloaded
 
         # Check for ffmpeg availability
         ffmpeg_available, ffmpeg_path = check_ffmpeg_availability()
@@ -169,7 +169,7 @@ def download_youtube_audio(youtube_url, output_path=None, uuid=None):
 
             if found_file:
                 print(f"Downloaded to: {found_file}")
-                return found_file
+                return found_file, True  # True indicates file was newly downloaded
 
             raise Exception(f"Downloaded file not found in {output_path}")
 
@@ -177,128 +177,7 @@ def download_youtube_audio(youtube_url, output_path=None, uuid=None):
         print(f"Error downloading YouTube video: {e}")
         print("This could be due to YouTube API changes or restrictions.")
         print("Check if the video is region-restricted or age-restricted")
-        return None
+        return None, False
 
 
-def process_csv_for_downloads(csv_path, output_path=None, process_all=True):
-    """
-    Process a CSV file containing YouTube URLs and download audio for each URL.
-
-    Args:
-        csv_path: Path to the CSV file containing YouTube URLs
-        output_path: Directory to save the downloaded audio files
-        process_all: Whether to process all URLs in the CSV file or just the first one
-
-    Returns:
-        List of paths to the downloaded audio files
-    """
-    if output_path is None:
-        output_path = create_download_directory()
-
-    downloaded_files = []
-
-    try:
-        # Use pandas to read the CSV file
-        df = pd.read_csv(csv_path)
-
-        if df.empty:
-            print("CSV file is empty.")
-            return downloaded_files
-
-        # Check if required columns exist
-        if "link" not in df.columns:
-            print("Error: CSV file must contain a 'link' column with YouTube URLs.")
-            return downloaded_files
-
-        if "uuid" not in df.columns:
-            print(
-                "Error: CSV file must contain a 'uuid' column with unique identifiers."
-            )
-            return downloaded_files
-
-        # Process each row (or just the first if process_all is False)
-        for index, row in df.iterrows():
-            try:
-                url = row["link"]
-                uuid = row["uuid"]
-
-                # Skip rows with missing UUID
-                if pd.isna(uuid) or not uuid:
-                    print(f"\nSkipping row {index}: Missing UUID for URL {url}")
-                    continue
-
-                song_info = (
-                    f" - {row['song_name']}"
-                    if "song_name" in df.columns and not pd.isna(row["song_name"])
-                    else ""
-                )
-                print(f"\nProcessing YouTube URL: {url}{song_info} (UUID: {uuid})")
-
-                # Download the audio using UUID
-                audio_file = download_youtube_audio(
-                    url, output_path=output_path, uuid=uuid
-                )
-                if audio_file:
-                    downloaded_files.append(audio_file)
-            except ValueError as e:
-                print(f"Error processing row {index}: {e}")
-                continue
-
-            if not process_all:
-                break  # Process only the first URL if process_all is False
-
-        print(f"\nDownloaded {len(downloaded_files)} files.")
-        return downloaded_files
-
-    except Exception as e:
-        print(f"Error processing CSV file: {e}")
-        return downloaded_files
-
-
-def main():
-    """
-    Main function to download YouTube audio from command line or CSV file.
-    """
-    parser = argparse.ArgumentParser(description="Download audio from YouTube videos")
-    parser.add_argument("--url", help="YouTube URL to download")
-    parser.add_argument("--csv", help="CSV file containing YouTube URLs")
-    parser.add_argument("--output", help="Directory to save the downloaded audio files")
-    parser.add_argument(
-        "--all", action="store_true", help="Process all URLs in the CSV file"
-    )
-
-    args = parser.parse_args()
-
-    # Create output directory if specified
-    output_path = None
-    if args.output:
-        output_path = args.output
-        os.makedirs(output_path, exist_ok=True)
-    else:
-        output_path = create_download_directory()
-
-    if args.url:
-        # Download a single URL
-        audio_file = download_youtube_audio(args.url, output_path=output_path)
-        if audio_file:
-            print(f"\nSuccessfully downloaded: {audio_file}")
-    elif args.csv:
-        # Process the CSV file
-        process_csv_for_downloads(
-            args.csv, output_path=output_path, process_all=args.all
-        )
-    else:
-        # Use default CSV file if it exists
-        default_csv_path = Path(__file__).parent.parent / "data" / "taqsim_ai.csv"
-        if default_csv_path.exists():
-            print(f"Using default CSV file: {default_csv_path}")
-            process_csv_for_downloads(
-                default_csv_path, output_path=output_path, process_all=args.all
-            )
-        else:
-            print("No YouTube URL provided and no CSV file found.")
-            print("Please provide a YouTube URL with --url or a CSV file with --csv")
-
-
-if __name__ == "__main__":
-    main()
+# CSV processing has been moved to pipeline.py
