@@ -657,7 +657,7 @@ def create_embedding_visualization(
             orient="right",
             labelLimit=75,
             symbolLimit=0,
-            columns=3,
+            columns=1,
         )
         .interactive()
     )

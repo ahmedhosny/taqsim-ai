@@ -1,6 +1,7 @@
 import streamlit as st
 from data_explorer_ui import data_explorer_page
 from embedding_visualizer_streamlit import embedding_visualizer_ui
+from homepage import render_home_page
 
 # Set page configuration
 st.set_page_config(
@@ -28,16 +29,7 @@ page = st.sidebar.radio(
 
 # Home page
 if page == "Home":
-    # Display project overview
-    st.subheader("Project Overview")
-    st.markdown("""
-    This dashboard provides interactive visualizations and tools for exploring the Taqsim AI project.
-    Use the sidebar to navigate between different features and analysis tools.
-    """)
-    st.write("""
-    Taqsim x AI is a project focused on analyzing and understanding Arabic music through machine learning.
-    This dashboard provides tools to explore audio data, visualize embeddings, and analyze musical patterns.
-    """)
+    render_home_page()
 
 
 # Data Explorer page
