@@ -17,6 +17,12 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from umap import UMAP
 
+# Define base paths relative to the script location
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(SCRIPT_DIR, "data")
+METADATA_CSV_PATH = os.path.join(DATA_DIR, "taqsim_ai.csv")
+EMBEDDINGS_DIR_PATH = os.path.join(DATA_DIR, "embeddings")
+
 # Global toggle for verbose info messages
 SHOW_VERBOSE_INFO = False
 
@@ -26,9 +32,7 @@ def get_all_artists_from_csv():
     Reads the metadata CSV and returns a sorted list of unique artist names.
     Handles potential missing 'artist' column or file errors.
     """
-    # Path to the metadata CSV file - ensure this path is correct and accessible
-    # Consider making this path configurable or relative to the project root if needed
-    csv_path = "/Users/ahmedhosny/taqsim-ai/data/taqsim_ai.csv"
+    csv_path = METADATA_CSV_PATH
     try:
         df = pd.read_csv(csv_path)
         if "artist" in df.columns:
@@ -62,9 +66,7 @@ def get_all_artists_from_csv():
 
 # Helper function to get all unique song names from the metadata CSV
 def get_all_songs_from_csv():
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_dir = os.path.dirname(script_dir)
-    csv_path = os.path.join(project_dir, "data", "taqsim_ai.csv")
+    csv_path = METADATA_CSV_PATH
     try:
         df = pd.read_csv(csv_path)
         if "song_name" in df.columns:
@@ -92,9 +94,7 @@ def get_all_songs_from_csv():
 
 # Helper function to get all unique maqam names from the metadata CSV
 def get_all_maqams_from_csv():
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_dir = os.path.dirname(script_dir)
-    csv_path = os.path.join(project_dir, "data", "taqsim_ai.csv")
+    csv_path = METADATA_CSV_PATH
     try:
         df = pd.read_csv(csv_path)
         if "maqam" in df.columns:
@@ -202,8 +202,7 @@ def get_metadata_from_csv(video_ids):
     """
     metadata = {}
 
-    # Path to the metadata CSV file
-    csv_path = "/Users/ahmedhosny/taqsim-ai/data/taqsim_ai.csv"
+    csv_path = METADATA_CSV_PATH
 
     try:
         df = pd.read_csv(csv_path)
@@ -708,20 +707,11 @@ def embedding_visualizer_ui():
     # On a fresh session, this will be the default. On refreshes, it will be the persisted value.
     SHOW_VERBOSE_INFO = st.session_state.show_verbose_info_checkbox_val
 
-    # Get the project directory
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_dir = os.path.dirname(script_dir)
-
-    # Set default embeddings directory
-    default_embeddings_dir = os.path.join(project_dir, "data", "embeddings")
-
     # Sidebar for configuration
     st.sidebar.markdown("## Visualization Settings")
 
-    # Embeddings directory input
-    embeddings_dir = st.sidebar.text_input(
-        "Embeddings Directory", value=default_embeddings_dir
-    )
+    # Embeddings directory is now fixed and uses the global relative path
+    embeddings_dir = EMBEDDINGS_DIR_PATH
 
     # Embedding type selection
     embedding_type = st.sidebar.selectbox(
