@@ -1,6 +1,6 @@
 import streamlit as st
-from embedding_visualizer_streamlit import embedding_visualizer_ui
 from data_explorer_ui import data_explorer_page
+from embedding_visualizer_streamlit import embedding_visualizer_ui
 
 # Set page configuration
 st.set_page_config(
@@ -9,6 +9,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
 
 # Add a title and description
 st.title("Taqsim x AI")

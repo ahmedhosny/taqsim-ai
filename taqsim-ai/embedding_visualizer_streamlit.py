@@ -509,8 +509,16 @@ def create_embedding_visualization(
 
     # Base chart
     base = alt.Chart(df).encode(
-        x=alt.X("x:Q", title="UMAP Dimension 1"),
-        y=alt.Y("y:Q", title="UMAP Dimension 2"),
+        x=alt.X(
+            "x:Q",
+            title=None,
+            axis=alt.Axis(labels=False, ticks=False, domain=False, grid=True),
+        ),
+        y=alt.Y(
+            "y:Q",
+            title=None,
+            axis=alt.Axis(labels=False, ticks=False, domain=False, grid=True),
+        ),
     )
 
     # Create lines between consecutive chunks
@@ -620,13 +628,14 @@ def create_embedding_visualization(
             width=900,
             height=1000,
             title=f"MAEST Audio Embeddings - {embedding_type.upper()} Tokens",
+            padding={"left": 0, "top": 0, "right": 0, "bottom": 0},
         )
+        .resolve_legend(color="independent")
         .configure_legend(
             orient="right",
-            labelLimit=100,
+            labelLimit=75,
             symbolLimit=0,
-            direction="vertical",
-            columns=1,
+            columns=3,
         )
         .interactive()
     )
@@ -696,7 +705,6 @@ def embedding_visualizer_ui():
         "Embedding Type",
         ["cls", "dist", "avg", "combined"],
         index=3,
-        help="Type of embedding to visualize",
     )
 
     # Artist Filter Section
@@ -802,13 +810,10 @@ def embedding_visualizer_ui():
     exclude_last_chunk = st.sidebar.checkbox(
         "Exclude Last Segment",
         value=True,
-        help="You may want to exclude the last segment from each taqsim as it may "
-        "partially contain silence and that will skew the visualization.",
     )
     only_first_chunk = st.sidebar.checkbox(
         "Only First Segment",
         value=False,
-        help="Only include the first segment from each song",
     )
 
     st.sidebar.markdown("---")  # Separator
@@ -818,7 +823,6 @@ def embedding_visualizer_ui():
         "Color by:",
         ["song_name", "artist", "maqam", "type", "electric", "vintage"],
         index=0,
-        help="Attribute to color points by",
     )
     show_lines = st.sidebar.checkbox("Show connecting lines", value=True)
     show_chunk_numbers = st.sidebar.checkbox("Show Segment Numbers", value=True)
@@ -831,7 +835,6 @@ def embedding_visualizer_ui():
     st.sidebar.checkbox(
         "Show Detailed Info Messages",
         key="show_verbose_info_checkbox_val",  # Session state (initialized above or persisted) drives the value
-        help="Toggle the display of detailed informational messages during processing.",
     )
 
     # After the checkbox widget, update SHOW_VERBOSE_INFO from session state.
