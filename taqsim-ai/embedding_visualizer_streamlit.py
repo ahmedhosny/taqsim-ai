@@ -31,19 +31,22 @@ def get_all_artists_from_csv():
         df = pd.read_csv(csv_path)
         if "artist" in df.columns:
             # Get unique artists, convert to string, strip whitespace, handle empty strings, sort
-            artists = sorted(
-                list(
-                    df["artist"]
-                    .astype(str)
-                    .str.strip()
-                    .replace("", "Unknown Artist")
-                    .fillna("Unknown Artist")
-                    .unique()
-                )
-            )
-            # Remove 'Unknown Artist' if it's only there due to empty strings and not a real entry, if desired
-            # For now, it will be included if present.
-
+            # Fill NaN and empty strings with a consistent placeholder first
+            # Then convert to string, strip, and replace placeholder and 'nan' string with 'Unknown Artist'
+            # 1. Convert 'artist' column to string type.
+            series = df["artist"].astype(str)
+            # 2. Convert to lowercase.
+            series = series.str.lower()
+            # 3. Strip whitespace from all entries.
+            series = series.str.strip()
+            # 4. Replace empty strings and the literal string 'nan' (which is now guaranteed lowercase)
+            #    with a canonical lowercase 'unknown artist'.
+            series = series.replace(['', 'nan'], "unknown artist")
+            # 5. Get unique, sorted list of artist names.
+            artists = sorted(list(series.unique()))
+            # Ensure "Unknown Artist" is treated as one category if it results from multiple sources (NaN, empty, 'nan')
+            # The .unique() above should handle this, but let's be sure it's clean.
+            # If "Unknown Artist" is the only thing and it's not desired, could filter here.
             return artists
         else:
             # Log to sidebar or main page depending on context if Streamlit elements are used here
@@ -69,7 +72,7 @@ def get_all_songs_from_csv():
                     .astype(str)
                     .str.strip()
                     .replace("", "Unknown Song")
-                    .fillna("Unknown Song")
+                    .fillna("Unknown Song") # Note: fillna after astype(str) might not catch all original NaNs if they became 'nan' string
                     .unique()
                 )
             )
@@ -403,7 +406,24 @@ def create_embedding_visualization(
         for vid in video_ids:
             # Get metadata for this video ID
             metadata = metadata_by_video.get(vid, {})
-            value = metadata.get(column, "Unknown")
+            # Use lowercase 'unknown artist' as the standard for missing/invalid artist names
+            default_value = "unknown artist" if column == "artist" else "Unknown"
+            raw_value = metadata.get(column, default_value)
+
+            if column == "artist":
+                # 1. Convert to string type.
+                processed_value = str(raw_value)
+                # 2. Convert to lowercase.
+                processed_value = processed_value.lower()
+                # 3. Strip whitespace.
+                processed_value = processed_value.strip()
+                # 4. Replace empty strings and the literal string 'nan' (now guaranteed lowercase)
+                #    with the canonical lowercase 'unknown artist'.
+                if processed_value == "" or processed_value == "nan":
+                    processed_value = "unknown artist"
+                value = processed_value
+            else:
+                value = raw_value # For other columns (including song_name), use the raw value or its generic default
             column_values.append(value)
         df_data[column] = column_values
 
@@ -700,6 +720,7 @@ def embedding_visualizer_ui():
     artist_filter_for_visualization = st.session_state.get(
         "selected_artists_for_filter", []
     )
+
 
     # --- Song Filter Section ---
     current_song_options = get_all_songs_from_csv()
