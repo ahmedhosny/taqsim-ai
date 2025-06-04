@@ -23,6 +23,7 @@ dependencies = [
     "altair>=5.1.2",
     "pandas>=2.0.0",
     "streamlit>=1.45.1",
+    "scikit-learn>=1.6.1",
 ]
 
 [tool.hatch.build.targets.wheel]

@@ -13,6 +13,8 @@ import altair as alt
 import numpy as np
 import pandas as pd
 import streamlit as st
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 from umap import UMAP
 
 # Global toggle for verbose info messages
@@ -324,14 +326,15 @@ def prepare_embeddings_for_umap(
 def create_embedding_visualization(
     embeddings_dir: str,
     embedding_type: str = "cls",
+    reduction_method: str = "UMAP",  # Added with type hint and default
     exclude_last_chunk: bool = False,
     artist_filter: list[str] | None = None,
     song_filter: list[str] | None = None,
     maqam_filter: list[str] | None = None,
-    only_first_chunk: bool = False,
     color_selection: str = "artist",
     show_lines: bool = False,
     show_chunk_numbers: bool = False,
+    only_first_chunk: bool = False,
     show_only_selected_artist_labels: bool = False,
     debug: bool = False,
 ):
@@ -378,12 +381,32 @@ def create_embedding_visualization(
     unique_video_ids = list(set(video_ids))
     metadata_by_video = get_metadata_from_csv(unique_video_ids)
 
-    # Reduce dimensionality with UMAP
-    with st.spinner(
-        f"Reducing dimensionality with UMAP (embedding type: {embedding_type})..."
-    ):
-        reducer = UMAP(n_neighbors=15, min_dist=0.1, random_state=42)
-        embedding_2d = reducer.fit_transform(embedding_array)
+    # Reduce dimensionality based on selected method
+    if reduction_method == "UMAP":
+        with st.spinner(
+            f"Reducing dimensionality with UMAP (embedding type: {embedding_type})..."
+        ):
+            reducer = UMAP(
+                n_neighbors=15, min_dist=0.1, random_state=42, n_components=2
+            )
+            embedding_2d = reducer.fit_transform(embedding_array)
+    elif reduction_method == "T-SNE":
+        with st.spinner(
+            f"Reducing dimensionality with T-SNE (embedding type: {embedding_type})..."
+        ):
+            # T-SNE can be slow on large datasets, consider perplexity and n_iter
+            # For very large datasets, PCA might be a prerequisite for T-SNE
+            reducer = TSNE(n_components=2, random_state=42, perplexity=30, n_iter=300)
+            embedding_2d = reducer.fit_transform(embedding_array)
+    elif reduction_method == "PCA":
+        with st.spinner(
+            f"Reducing dimensionality with PCA (embedding type: {embedding_type})..."
+        ):
+            reducer = PCA(n_components=2, random_state=42)
+            embedding_2d = reducer.fit_transform(embedding_array)
+    else:
+        st.error(f"Unknown reduction method: {reduction_method}")
+        return None
 
     # Create a DataFrame for Altair with all metadata
     df_data = {
@@ -627,7 +650,7 @@ def create_embedding_visualization(
         .properties(
             width=900,
             height=1000,
-            title=f"MAEST Audio Embeddings - {embedding_type.upper()} Tokens",
+            title=f"MAEST Audio Embeddings - {embedding_type.upper()} Tokens ({reduction_method.upper()})",
             padding={"left": 0, "top": 0, "right": 0, "bottom": 0},
         )
         .resolve_legend(color="independent")
@@ -705,6 +728,13 @@ def embedding_visualizer_ui():
         "Embedding Type",
         ["cls", "dist", "avg", "combined"],
         index=3,
+    )
+
+    # Dimensionality reduction method selection
+    reduction_method = st.sidebar.radio(
+        "Dimensionality Reduction Method",
+        ["UMAP", "T-SNE", "PCA"],
+        index=0,  # Default to UMAP
     )
 
     # Artist Filter Section
@@ -853,7 +883,8 @@ def embedding_visualizer_ui():
             chart = create_embedding_visualization(
                 embeddings_dir=embeddings_dir,
                 embedding_type=embedding_type,
-                exclude_last_chunk=exclude_last_chunk,
+                reduction_method=reduction_method,  # Added
+                exclude_last_chunk=exclude_last_chunk,  # Restored
                 artist_filter=artist_filter_for_visualization,
                 song_filter=song_filter_for_visualization,
                 maqam_filter=maqam_filter_for_visualization,
