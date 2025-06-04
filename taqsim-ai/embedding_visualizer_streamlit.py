@@ -617,9 +617,16 @@ def create_embedding_visualization(
     chart = (
         alt.layer(*layers)
         .properties(
-            width=700,
-            height=500,
+            width=900,
+            height=1000,
             title=f"MAEST Audio Embeddings - {embedding_type.upper()} Tokens",
+        )
+        .configure_legend(
+            orient="right",
+            labelLimit=100,
+            symbolLimit=0,
+            direction="vertical",
+            columns=1,
         )
         .interactive()
     )
