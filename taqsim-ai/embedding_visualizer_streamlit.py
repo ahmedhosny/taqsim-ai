@@ -41,7 +41,7 @@ def get_all_artists_from_csv():
             series = series.str.strip()
             # 4. Replace empty strings and the literal string 'nan' (which is now guaranteed lowercase)
             #    with a canonical lowercase 'unknown artist'.
-            series = series.replace(['', 'nan'], "unknown artist")
+            series = series.replace(["", "nan"], "unknown artist")
             # 5. Get unique, sorted list of artist names.
             artists = sorted(list(series.unique()))
             # Ensure "Unknown Artist" is treated as one category if it results from multiple sources (NaN, empty, 'nan')
@@ -72,7 +72,9 @@ def get_all_songs_from_csv():
                     .astype(str)
                     .str.strip()
                     .replace("", "Unknown Song")
-                    .fillna("Unknown Song") # Note: fillna after astype(str) might not catch all original NaNs if they became 'nan' string
+                    .fillna(
+                        "Unknown Song"
+                    )  # Note: fillna after astype(str) might not catch all original NaNs if they became 'nan' string
                     .unique()
                 )
             )
@@ -423,7 +425,7 @@ def create_embedding_visualization(
                     processed_value = "unknown artist"
                 value = processed_value
             else:
-                value = raw_value # For other columns (including song_name), use the raw value or its generic default
+                value = raw_value  # For other columns (including song_name), use the raw value or its generic default
             column_values.append(value)
         df_data[column] = column_values
 
@@ -720,7 +722,6 @@ def embedding_visualizer_ui():
     artist_filter_for_visualization = st.session_state.get(
         "selected_artists_for_filter", []
     )
-
 
     # --- Song Filter Section ---
     current_song_options = get_all_songs_from_csv()
