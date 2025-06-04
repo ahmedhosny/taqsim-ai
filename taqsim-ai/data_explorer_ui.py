@@ -1,3 +1,5 @@
+import os  # Added import
+
 import altair as alt  # Added for future use with Altair charts
 import pandas as pd
 import streamlit as st
@@ -7,10 +9,10 @@ def data_explorer_page():
     st.subheader("Data Explorer")
     st.write("This page allows you to explore the taqsim dataset metadata.")
 
-    # Path to the CSV file
-    # Assuming the CSV is in data/taqsim_ai.csv relative to the project root
-    # Adjust if your project structure is different or pass as an argument
-    csv_path = "/Users/ahmedhosny/taqsim-ai/data/taqsim_ai.csv"
+    # Path to the CSV file, relative to this script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Assumes 'data' folder is in the same directory as this script.
+    csv_path = os.path.join(script_dir, "data", "taqsim_ai.csv")
 
     # Read the CSV file
     try:
