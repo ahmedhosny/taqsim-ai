@@ -1,6 +1,7 @@
-import streamlit as st
+import altair as alt  # Added for future use with Altair charts
 import pandas as pd
-import altair as alt # Added for future use with Altair charts
+import streamlit as st
+
 
 def data_explorer_page():
     st.subheader("Data Explorer")
@@ -54,12 +55,20 @@ def data_explorer_page():
             artist_counts_series = filtered_df["artist"].value_counts().head(10)
             plot_df_artist = artist_counts_series.reset_index()
             # plot_df_artist will have columns named 'artist' (from original series index) and 'count' (name of value_counts series)
-            chart_artist = alt.Chart(plot_df_artist).mark_bar().encode(
-                x=alt.X('artist:N', sort=alt.EncodingSortField(field="count", op="sum", order='descending')),
-                y=alt.Y('count:Q', title='Number of Taqasim'),
-                tooltip=['artist', 'count']
-            ).properties(
-                title='Top 10 Artists by Number of Taqasim'
+            chart_artist = (
+                alt.Chart(plot_df_artist)
+                .mark_bar()
+                .encode(
+                    x=alt.X(
+                        "artist:N",
+                        sort=alt.EncodingSortField(
+                            field="count", op="sum", order="descending"
+                        ),
+                    ),
+                    y=alt.Y("count:Q", title="Number of Taqasim"),
+                    tooltip=["artist", "count"],
+                )
+                .properties(title="Top 10 Artists by Number of Taqasim")
             )
             st.altair_chart(chart_artist, use_container_width=True)
 
@@ -69,12 +78,20 @@ def data_explorer_page():
             maqam_counts_series = filtered_df["maqam"].value_counts()
             plot_df_maqam = maqam_counts_series.reset_index()
             # plot_df_maqam will have columns named 'maqam' and 'count'
-            chart_maqam = alt.Chart(plot_df_maqam).mark_bar().encode(
-                x=alt.X('maqam:N', sort=alt.EncodingSortField(field="count", op="sum", order='descending')),
-                y=alt.Y('count:Q', title='Number of Taqasim'),
-                tooltip=['maqam', 'count']
-            ).properties(
-                title='Maqam Distribution by Number of Taqasim'
+            chart_maqam = (
+                alt.Chart(plot_df_maqam)
+                .mark_bar()
+                .encode(
+                    x=alt.X(
+                        "maqam:N",
+                        sort=alt.EncodingSortField(
+                            field="count", op="sum", order="descending"
+                        ),
+                    ),
+                    y=alt.Y("count:Q", title="Number of Taqasim"),
+                    tooltip=["maqam", "count"],
+                )
+                .properties(title="Maqam Distribution by Number of Taqasim")
             )
             st.altair_chart(chart_maqam, use_container_width=True)
 
