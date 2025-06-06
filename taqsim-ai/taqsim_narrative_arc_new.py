@@ -123,9 +123,6 @@ def taqsim_narrative_arc_ui():
         st.error("No valid embeddings found for the selected options.")
         return
 
-    # Apply dimensionality reduction
-    st.info(f"Applying {reduction_method} to {len(embeddings_array)} embeddings...")
-
     # Initialize the appropriate reducer
     if reduction_method == "UMAP":
         reducer = UMAP(n_components=2, random_state=42)
@@ -175,8 +172,7 @@ def taqsim_narrative_arc_ui():
     # Use all songs for display
     songs_to_display = all_songs
 
-    # Progress bar
-    progress_bar = st.progress(0)
+    # No progress bar needed
 
     # We'll use individual scales for each chart instead of global scales
 
@@ -223,11 +219,17 @@ def taqsim_narrative_arc_ui():
                             scale=alt.Scale(
                                 domain=[x_min - x_padding, x_max + x_padding], nice=True
                             ),
+                            axis=alt.Axis(
+                                labels=False, title=None, ticks=False, grid=True
+                            ),
                         ),
                         y=alt.Y(
                             "y",
                             scale=alt.Scale(
                                 domain=[y_min - y_padding, y_max + y_padding], nice=True
+                            ),
+                            axis=alt.Axis(
+                                labels=False, title=None, ticks=False, grid=True
                             ),
                         ),
                         tooltip=["chunk_number", "x", "y"],
@@ -244,11 +246,17 @@ def taqsim_narrative_arc_ui():
                             scale=alt.Scale(
                                 domain=[x_min - x_padding, x_max + x_padding], nice=True
                             ),
+                            axis=alt.Axis(
+                                labels=False, title=None, ticks=False, grid=True
+                            ),
                         ),
                         y=alt.Y(
                             "y",
                             scale=alt.Scale(
                                 domain=[y_min - y_padding, y_max + y_padding], nice=True
+                            ),
+                            axis=alt.Axis(
+                                labels=False, title=None, ticks=False, grid=True
                             ),
                         ),
                         order="chunk_number:Q",
@@ -270,11 +278,17 @@ def taqsim_narrative_arc_ui():
                             scale=alt.Scale(
                                 domain=[x_min - x_padding, x_max + x_padding], nice=True
                             ),
+                            axis=alt.Axis(
+                                labels=False, title=None, ticks=False, grid=True
+                            ),
                         ),
                         y=alt.Y(
                             "y",
                             scale=alt.Scale(
                                 domain=[y_min - y_padding, y_max + y_padding], nice=True
+                            ),
+                            axis=alt.Axis(
+                                labels=False, title=None, ticks=False, grid=True
                             ),
                         ),
                         text="chunk_number",
@@ -282,24 +296,25 @@ def taqsim_narrative_arc_ui():
                 )
 
                 # Combine layers
-                chart = (scatter + lines + text).properties(
-                    width=400,
-                    height=400,
-                    # title=f"{song_name}\n{artist} | {maqam}\n{uuid[:8]}",
-                    title=f"{uuid[:8]}",
+                chart = (
+                    (scatter + lines + text)
+                    .properties(
+                        width=400,
+                        height=350,
+                        # title=f"{song_name}\n{artist} | {maqam}\n{uuid[:8]}",
+                        title=f"{uuid[:8]}",
+                    )
+                    .configure_view(
+                        strokeWidth=2,  # Width of the border
+                        stroke="gray",  # Color of the border
+                    )
                 )
 
                 # Display in the appropriate column
                 with cols[col_idx]:
                     st.altair_chart(chart)
 
-                # Update progress bar
-                current_progress = min(0.999, (song_idx + 1) / len(songs_to_display))
-                progress_bar.progress(current_progress)
-
-    # Complete the progress
-    progress_bar.progress(1.0)
-    progress_bar.empty()
+                # No progress bar updates needed
 
 
 if __name__ == "__main__":
