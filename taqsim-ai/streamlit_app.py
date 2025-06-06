@@ -2,6 +2,7 @@ import streamlit as st
 from data_explorer_ui import data_explorer_page
 from embedding_visualizer_streamlit import embedding_visualizer_ui
 from homepage import render_home_page
+from taqsim_narrative_arc_new import taqsim_narrative_arc_ui
 
 # Set page configuration
 st.set_page_config(
@@ -24,6 +25,7 @@ page = st.sidebar.radio(
         "Home",
         "Data Explorer",
         "Embeddings Visualization",
+        "Taqsim Narrative Arc",
     ],
 )
 
@@ -39,13 +41,12 @@ elif page == "Data Explorer":
 
 # Embeddings Visualization page
 elif page == "Embeddings Visualization":
-    st.header("Embeddings Visualization")
-    st.write(
-        "This page will provide interactive visualizations of audio embeddings."
-        "Each dot represent a 30 second segments of the taqsim, with the numbering representing"
-        " the segment order."
-    )
     embedding_visualizer_ui()
+
+
+# Taqsim Narrative Arc page
+elif page == "Taqsim Narrative Arc":
+    taqsim_narrative_arc_ui()
 
 
 # Footer

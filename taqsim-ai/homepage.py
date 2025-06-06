@@ -3,7 +3,7 @@ import streamlit as st
 
 def render_home_page():
     # st.set_page_config should be called in the main app script
-    st.header("Taqsim Atlas: Mapping the Improvised Landscape of the Taqsim")
+    st.subheader("Taqsim Atlas: Mapping the Improvised Landscape of the Taqsim")
 
     st.header("What Is a Taqsim?")
     st.write("""

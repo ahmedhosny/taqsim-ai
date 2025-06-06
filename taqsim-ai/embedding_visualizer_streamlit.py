@@ -695,6 +695,13 @@ def embedding_visualizer_ui():
     """
     global SHOW_VERBOSE_INFO
 
+    st.subheader("Embeddings Visualization")
+    st.write(
+        "This page will provide interactive visualizations of audio embeddings."
+        "Each dot represent a 30 second segments of the taqsim, with the numbering representing"
+        " the segment order."
+    )
+
     # Initialize session state for the verbose info checkbox if it's not already set.
     # This ensures that on the first run of a new session, it takes the global default (False).
     # The global SHOW_VERBOSE_INFO (defined at the top of the script) is used as this default.
