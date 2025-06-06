@@ -178,9 +178,7 @@ def taqsim_narrative_arc_ui():
     # Progress bar
     progress_bar = st.progress(0)
 
-    # Calculate global min/max across all data to use consistent scales
-    global_x_min, global_x_max = all_data_df["x"].min(), all_data_df["x"].max()
-    global_y_min, global_y_max = all_data_df["y"].min(), all_data_df["y"].max()
+    # We'll use individual scales for each chart instead of global scales
 
     # Create a grid layout using Streamlit columns instead of Altair concatenation
     # Determine how many columns to use
@@ -207,16 +205,30 @@ def taqsim_narrative_arc_ui():
                 # Sort by chunk number
                 song_df = song_df.sort_values("chunk_number")
 
-                # Create scatter plot with connecting lines and labels
+                # Calculate individual min/max for this song's data points
+                x_min, x_max = song_df["x"].min(), song_df["x"].max()
+                y_min, y_max = song_df["y"].min(), song_df["y"].max()
+
+                # Add a small padding (5%) to the ranges for better visualization
+                x_padding = (x_max - x_min) * 0.05 if x_max > x_min else 0.1
+                y_padding = (y_max - y_min) * 0.05 if y_max > y_min else 0.1
+
+                # Create scatter plot with connecting lines and labels using individual scales
                 scatter = (
                     alt.Chart(song_df)
                     .mark_circle(size=100)
                     .encode(
                         x=alt.X(
-                            "x", scale=alt.Scale(domain=[global_x_min, global_x_max])
+                            "x",
+                            scale=alt.Scale(
+                                domain=[x_min - x_padding, x_max + x_padding], nice=True
+                            ),
                         ),
                         y=alt.Y(
-                            "y", scale=alt.Scale(domain=[global_y_min, global_y_max])
+                            "y",
+                            scale=alt.Scale(
+                                domain=[y_min - y_padding, y_max + y_padding], nice=True
+                            ),
                         ),
                         color=alt.Color(
                             "chunk_number:O",
@@ -227,16 +239,46 @@ def taqsim_narrative_arc_ui():
                     )
                 )
 
+                # Create lines with the same axis scales
                 lines = (
                     alt.Chart(song_df)
                     .mark_line(opacity=0.5)
-                    .encode(x="x", y="y", order="chunk_number:Q")
+                    .encode(
+                        x=alt.X(
+                            "x",
+                            scale=alt.Scale(
+                                domain=[x_min - x_padding, x_max + x_padding], nice=True
+                            ),
+                        ),
+                        y=alt.Y(
+                            "y",
+                            scale=alt.Scale(
+                                domain=[y_min - y_padding, y_max + y_padding], nice=True
+                            ),
+                        ),
+                        order="chunk_number:Q",
+                    )
                 )
 
+                # Create text labels with the same axis scales
                 text = (
                     alt.Chart(song_df)
                     .mark_text(fontSize=10)
-                    .encode(x="x", y="y", text="chunk_number")
+                    .encode(
+                        x=alt.X(
+                            "x",
+                            scale=alt.Scale(
+                                domain=[x_min - x_padding, x_max + x_padding], nice=True
+                            ),
+                        ),
+                        y=alt.Y(
+                            "y",
+                            scale=alt.Scale(
+                                domain=[y_min - y_padding, y_max + y_padding], nice=True
+                            ),
+                        ),
+                        text="chunk_number",
+                    )
                 )
 
                 # Combine layers
