@@ -213,10 +213,10 @@ def taqsim_narrative_arc_ui():
                 x_padding = (x_max - x_min) * 0.05 if x_max > x_min else 0.1
                 y_padding = (y_max - y_min) * 0.05 if y_max > y_min else 0.1
 
-                # Create scatter plot with connecting lines and labels using individual scales
+                # Create scatter plot with no color encoding - using a single color
                 scatter = (
                     alt.Chart(song_df)
-                    .mark_circle(size=100)
+                    .mark_circle(size=100, color="#1f77b4")
                     .encode(
                         x=alt.X(
                             "x",
@@ -229,11 +229,6 @@ def taqsim_narrative_arc_ui():
                             scale=alt.Scale(
                                 domain=[y_min - y_padding, y_max + y_padding], nice=True
                             ),
-                        ),
-                        color=alt.Color(
-                            "chunk_number:O",
-                            scale=alt.Scale(scheme="viridis"),
-                            legend=None,
                         ),
                         tooltip=["chunk_number", "x", "y"],
                     )
@@ -260,10 +255,15 @@ def taqsim_narrative_arc_ui():
                     )
                 )
 
-                # Create text labels with the same axis scales
+                # Create text labels positioned above the dots
                 text = (
                     alt.Chart(song_df)
-                    .mark_text(fontSize=10)
+                    .mark_text(
+                        fontSize=10,
+                        dy=-10,  # Offset text upward by 10 pixels
+                        align="center",
+                        baseline="bottom",
+                    )
                     .encode(
                         x=alt.X(
                             "x",
