@@ -74,7 +74,7 @@ def taqsim_narrative_arc_ui():
 
     st.write(
         "This visualization shows the narrative arc of each taqsim performance as a trajectory in the embedding space. "
-        "Each plot represents one song, with points showing the 30-second segments in sequence."
+        "Each plot represents one taqsim, with points showing the 30-second segments in sequence."
     )
 
     # Sidebar options
@@ -182,7 +182,7 @@ def taqsim_narrative_arc_ui():
 
     # Create a grid layout using Streamlit columns instead of Altair concatenation
     # Determine how many columns to use
-    cols_per_row = 1
+    cols_per_row = 4
 
     # Group songs into rows
     for i in range(0, len(songs_to_display), cols_per_row):
@@ -285,7 +285,8 @@ def taqsim_narrative_arc_ui():
                 chart = (scatter + lines + text).properties(
                     width=400,
                     height=400,
-                    title=f"{song_name}\n{artist} | {maqam}\n{uuid[:8]}",
+                    # title=f"{song_name}\n{artist} | {maqam}\n{uuid[:8]}",
+                    title=f"{uuid[:8]}",
                 )
 
                 # Display in the appropriate column
