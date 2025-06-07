@@ -13,6 +13,7 @@ import streamlit as st
 from embedding_visualizer_streamlit import (
     EMBEDDINGS_DIR_PATH,
     METADATA_CSV_PATH,
+    NORMALIZED_EMBEDDINGS_DIR_PATH,
     get_metadata_from_csv,
     load_embeddings,
     prepare_embeddings_for_umap,
@@ -100,8 +101,28 @@ def taqsim_narrative_arc_ui():
         value=True,
     )
 
-    # Get embeddings directory
-    embeddings_dir = EMBEDDINGS_DIR_PATH
+    # Normalization options
+    st.sidebar.subheader("Normalization")
+
+    # Initialize session state for embedding normalization if not already set
+    if "embedding_normalization" not in st.session_state:
+        st.session_state.embedding_normalization = "Original"
+
+    # Radio button to select between original and normalized embeddings
+    st.sidebar.radio(
+        "Embedding Source",
+        ["Original", "Artist-Normalized"],
+        key="embedding_normalization",
+    )
+
+    # Set normalize_by_artist to False since we're using pre-computed normalized embeddings
+    normalize_by_artist = False
+
+    # Get embeddings directory based on selection
+    if st.session_state.embedding_normalization == "Original":
+        embeddings_dir = EMBEDDINGS_DIR_PATH
+    else:  # "Artist-Normalized"
+        embeddings_dir = NORMALIZED_EMBEDDINGS_DIR_PATH
     if not os.path.exists(embeddings_dir):
         st.error(f"Embeddings directory does not exist: {embeddings_dir}")
         return
@@ -117,6 +138,7 @@ def taqsim_narrative_arc_ui():
         all_embeddings,
         embedding_type=embedding_type,
         exclude_last_chunk=exclude_last_chunk,
+        normalize_by_artist=normalize_by_artist,
     )
 
     if len(embeddings_array) == 0:

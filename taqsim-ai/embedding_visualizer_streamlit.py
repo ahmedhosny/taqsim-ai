@@ -21,7 +21,10 @@ from umap import UMAP
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(SCRIPT_DIR, "data")
 METADATA_CSV_PATH = os.path.join(DATA_DIR, "taqsim_ai.csv")
-EMBEDDINGS_DIR_PATH = os.path.join(DATA_DIR, "embeddings")
+EMBEDDINGS_DIR_PATH = "/Users/ahmedhosny/taqsim-ai/taqsim-ai/data/embeddings"
+NORMALIZED_EMBEDDINGS_DIR_PATH = (
+    "/Users/ahmedhosny/taqsim-ai/taqsim-ai/data/normalized_embeddings"
+)
 
 # Global toggle for verbose info messages
 SHOW_VERBOSE_INFO = False
@@ -123,14 +126,13 @@ def get_all_maqams_from_csv():
 
 def load_embeddings(embeddings_dir):
     """
-    Load all embedding files from the specified directory.
-    Works with the structure where each chunk has its own NPZ file.
+    Load embeddings from the specified directory.
 
     Args:
-        embeddings_dir: Path to the directory containing embedding .npz files
+        embeddings_dir: Directory containing embedding files
 
     Returns:
-        Dictionary with video IDs as keys and dictionaries of chunk embeddings as values
+        Dictionary mapping video IDs to embeddings
     """
     all_embeddings = {}
     failed_files = []  # Initialize list to store names of files that failed to load
@@ -246,6 +248,7 @@ def prepare_embeddings_for_umap(
     embedding_type="cls",
     exclude_last_chunk=False,
     only_first_chunk=False,
+    normalize_by_artist=False,
 ):
     """
     Prepare embeddings for UMAP dimensionality reduction.
@@ -256,6 +259,7 @@ def prepare_embeddings_for_umap(
         embedding_type: Which embedding type to use ('cls', 'dist', 'avg', or 'combined')
         exclude_last_chunk: If True, exclude the last chunk from each video
         only_first_chunk: If True, only include the first chunk from each video
+        normalize_by_artist: If True, apply additional artist normalization (not needed if using pre-normalized embeddings)
 
     Returns:
         Tuple of (embeddings array, video_ids list, chunk_numbers list)
@@ -336,6 +340,7 @@ def create_embedding_visualization(
     only_first_chunk: bool = False,
     show_only_selected_artist_labels: bool = False,
     debug: bool = False,
+    normalize_by_artist: bool = False,
 ):
     """
     Create an interactive visualization of audio embeddings using Altair.
@@ -366,7 +371,11 @@ def create_embedding_visualization(
 
     # Prepare embeddings for UMAP
     embedding_array, video_ids, chunk_numbers = prepare_embeddings_for_umap(
-        all_embeddings, embedding_type, exclude_last_chunk, only_first_chunk
+        all_embeddings,
+        embedding_type,
+        exclude_last_chunk,
+        only_first_chunk,
+        normalize_by_artist,
     )
 
     # Check if we have any embeddings to visualize
@@ -385,9 +394,7 @@ def create_embedding_visualization(
         with st.spinner(
             f"Reducing dimensionality with UMAP (embedding type: {embedding_type})..."
         ):
-            reducer = UMAP(
-                n_neighbors=15, min_dist=0.1, random_state=42, n_components=2
-            )
+            reducer = UMAP(n_neighbors=5, min_dist=0.1, random_state=42, n_components=2)
             embedding_2d = reducer.fit_transform(embedding_array)
     elif reduction_method == "T-SNE":
         with st.spinner(
@@ -695,6 +702,10 @@ def embedding_visualizer_ui():
     """
     global SHOW_VERBOSE_INFO
 
+    # Initialize embedding normalization choice in session state
+    if "embedding_normalization" not in st.session_state:
+        st.session_state.embedding_normalization = "Original"
+
     st.subheader("Embeddings Visualization")
     st.write(
         "This page will provide interactive visualizations of audio embeddings."
@@ -717,8 +728,14 @@ def embedding_visualizer_ui():
     # Sidebar for configuration
     st.sidebar.markdown("## Visualization Settings")
 
-    # Embeddings directory is now fixed and uses the global relative path
-    embeddings_dir = EMBEDDINGS_DIR_PATH
+    # Select embeddings directory based on session state
+    if st.session_state.embedding_normalization == "Original":
+        embeddings_dir = EMBEDDINGS_DIR_PATH
+    else:  # "Artist-Normalized"
+        embeddings_dir = NORMALIZED_EMBEDDINGS_DIR_PATH
+
+    if SHOW_VERBOSE_INFO:
+        st.info(f"Using embeddings from: {embeddings_dir}")
 
     # Embedding type selection
     embedding_type = st.sidebar.selectbox(
@@ -833,7 +850,19 @@ def embedding_visualizer_ui():
         "selected_maqams_for_filter", []
     )
 
+    # Normalization options
+    st.sidebar.subheader("Normalization")
+
+    # Radio button for selecting embedding source
+    st.sidebar.radio(
+        "Embedding Source",
+        options=["Original", "Artist-Normalized"],
+        key="embedding_normalization",
+        help="Select whether to use original embeddings or artist-normalized embeddings",
+    )
+
     # Chunk filtering options
+    st.sidebar.subheader("Chunk Filtering")
     exclude_last_chunk = st.sidebar.checkbox(
         "Exclude Last Segment",
         value=True,
@@ -877,11 +906,14 @@ def embedding_visualizer_ui():
         st.error(f"Embeddings directory does not exist: {embeddings_dir}")
     else:
         with st.spinner("Generating visualization..."):
+            # Set normalize_by_artist based on the embedding source selection
+            normalize_by_artist = False  # We don't need additional normalization since we're using pre-normalized embeddings
+
             chart = create_embedding_visualization(
                 embeddings_dir=embeddings_dir,
                 embedding_type=embedding_type,
-                reduction_method=reduction_method,  # Added
-                exclude_last_chunk=exclude_last_chunk,  # Restored
+                reduction_method=reduction_method,
+                exclude_last_chunk=exclude_last_chunk,
                 artist_filter=artist_filter_for_visualization,
                 song_filter=song_filter_for_visualization,
                 maqam_filter=maqam_filter_for_visualization,
@@ -889,6 +921,7 @@ def embedding_visualizer_ui():
                 color_selection=color_selection,
                 show_lines=show_lines,
                 show_chunk_numbers=show_chunk_numbers,
+                normalize_by_artist=normalize_by_artist,
             )
 
             if chart:
