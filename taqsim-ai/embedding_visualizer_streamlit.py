@@ -341,26 +341,30 @@ def create_embedding_visualization(
     show_only_selected_artist_labels: bool = False,
     debug: bool = False,
     normalize_by_artist: bool = False,
+    n_neighbors: int = 15,
 ):
     """
     Create an interactive visualization of audio embeddings using Altair.
 
     Args:
         embeddings_dir: Directory containing embedding files
-        embedding_type: Type of embedding to visualize ('cls', 'dist', 'avg', or 'combined')
-        exclude_last_chunk: If True, exclude the last chunk from each video
-        artist_filter: Optional list of artist names to filter by. If None or empty, no artist filter is applied.
-        song_filter: Optional list of song names to filter by. If None or empty, no song filter is applied.
-        only_first_chunk: If True, only include the first chunk from each video
-        color_selection: Attribute to color points by (e.g., 'song_name', 'artist')
-        help="Toggle whether to show connecting lines between segments of the same audio.",
-    )
-    show_chunk_numbers: Boolean to show chunk numbers on points
-    show_only_selected_artist_labels: Boolean to only show labels for selected artists
-    debug: Boolean to enable debug mode
+        embedding_type: Type of embedding to use ('cls', 'dist', 'avg', or 'combined')
+        reduction_method: Dimensionality reduction method ('UMAP', 'T-SNE', or 'PCA')
+        exclude_last_chunk: Whether to exclude the last chunk from each video
+        artist_filter: List of artists to include (None = all artists)
+        song_filter: List of songs to include (None = all songs)
+        maqam_filter: List of maqams to include (None = all maqams)
+        color_selection: Field to use for coloring points ('artist', 'song_name', or 'maqam')
+        show_lines: Whether to show lines connecting chunks from the same video
+        show_chunk_numbers: Whether to show chunk numbers as text labels
+        only_first_chunk: Whether to only include the first chunk from each video
+        show_only_selected_artist_labels: Whether to only show labels for selected artists
+        debug: Whether to print debug information
+        normalize_by_artist: Whether to normalize embeddings by artist
+        n_neighbors: Number of neighbors to consider for UMAP (only used when reduction_method is 'UMAP')
 
     Returns:
-        Altair chart object or None if visualization couldn't be created
+        Altair chart object or None if no embeddings found
     """
 
     # Load all embeddings
@@ -394,7 +398,9 @@ def create_embedding_visualization(
         with st.spinner(
             f"Reducing dimensionality with UMAP (embedding type: {embedding_type})..."
         ):
-            reducer = UMAP(n_neighbors=5, min_dist=0.1, random_state=42, n_components=2)
+            reducer = UMAP(
+                n_neighbors=n_neighbors, min_dist=0.1, random_state=42, n_components=2
+            )
             embedding_2d = reducer.fit_transform(embedding_array)
     elif reduction_method == "T-SNE":
         with st.spinner(
@@ -750,6 +756,25 @@ def embedding_visualizer_ui():
         ["UMAP", "T-SNE", "PCA"],
         index=0,  # Default to UMAP
     )
+    
+    # UMAP parameters section (only shown when UMAP is selected)
+    if reduction_method == "UMAP":
+        st.sidebar.subheader("UMAP Parameters")
+        
+        # Initialize n_neighbors in session state if not already set
+        if "umap_n_neighbors" not in st.session_state:
+            st.session_state.umap_n_neighbors = 15
+        
+        # Slider for n_neighbors parameter
+        st.sidebar.slider(
+            "Number of Neighbors",
+            min_value=2,
+            max_value=100,
+            value=st.session_state.umap_n_neighbors,
+            step=1,
+            help="Controls the balance between local and global structure. Lower values (2-15) preserve local structure, higher values (30-100) preserve global structure.",
+            key="umap_n_neighbors"
+        )
 
     # Artist Filter Section
     current_artist_options = get_all_artists_from_csv()
@@ -858,7 +883,6 @@ def embedding_visualizer_ui():
         "Embedding Source",
         options=["Original", "Artist-Normalized"],
         key="embedding_normalization",
-        help="Select whether to use original embeddings or artist-normalized embeddings",
     )
 
     # Chunk filtering options
@@ -908,7 +932,10 @@ def embedding_visualizer_ui():
         with st.spinner("Generating visualization..."):
             # Set normalize_by_artist based on the embedding source selection
             normalize_by_artist = False  # We don't need additional normalization since we're using pre-normalized embeddings
-
+            
+            # Get n_neighbors value from session state if UMAP is selected, otherwise use default
+            umap_n_neighbors = st.session_state.umap_n_neighbors if reduction_method == "UMAP" else 15
+            
             chart = create_embedding_visualization(
                 embeddings_dir=embeddings_dir,
                 embedding_type=embedding_type,
@@ -922,6 +949,7 @@ def embedding_visualizer_ui():
                 show_lines=show_lines,
                 show_chunk_numbers=show_chunk_numbers,
                 normalize_by_artist=normalize_by_artist,
+                n_neighbors=umap_n_neighbors,
             )
 
             if chart:
