@@ -21,10 +21,8 @@ from umap import UMAP
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(SCRIPT_DIR, "data")
 METADATA_CSV_PATH = os.path.join(DATA_DIR, "taqsim_ai.csv")
-EMBEDDINGS_DIR_PATH = "/Users/ahmedhosny/taqsim-ai/taqsim-ai/data/embeddings"
-NORMALIZED_EMBEDDINGS_DIR_PATH = (
-    "/Users/ahmedhosny/taqsim-ai/taqsim-ai/data/normalized_embeddings"
-)
+EMBEDDINGS_DIR_PATH = os.path.join(DATA_DIR, "embeddings")
+NORMALIZED_EMBEDDINGS_DIR_PATH = os.path.join(DATA_DIR, "normalized_embeddings")
 
 # Global toggle for verbose info messages
 SHOW_VERBOSE_INFO = False

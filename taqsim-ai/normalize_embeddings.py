@@ -21,9 +21,9 @@ from embedding_visualizer_streamlit import (
 )
 
 # Define the output directory for normalized embeddings
-NORMALIZED_EMBEDDINGS_DIR = (
-    "/Users/ahmedhosny/taqsim-ai/taqsim-ai/data/normalized_embeddings"
-)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(SCRIPT_DIR, "data")
+NORMALIZED_EMBEDDINGS_DIR = os.path.join(DATA_DIR, "normalized_embeddings")
 
 
 def normalize_embeddings_by_artist(all_embeddings, metadata):
