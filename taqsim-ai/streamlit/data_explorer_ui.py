@@ -11,8 +11,9 @@ def data_explorer_page():
 
     # Path to the CSV file, relative to this script
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    # Assumes 'data' folder is in the same directory as this script.
-    csv_path = os.path.join(script_dir, "data", "taqsim_ai.csv")
+    # Data folder is one level up from the script directory
+    data_dir = os.path.join(os.path.dirname(script_dir), "data")
+    csv_path = os.path.join(data_dir, "taqsim_ai.csv")
 
     # Read the CSV file
     try:

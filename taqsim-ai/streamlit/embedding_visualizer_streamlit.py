@@ -19,7 +19,8 @@ from umap import UMAP
 
 # Define base paths relative to the script location
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(SCRIPT_DIR, "data")
+PARENT_DIR = os.path.dirname(SCRIPT_DIR)  # Go one level up
+DATA_DIR = os.path.join(PARENT_DIR, "data")
 METADATA_CSV_PATH = os.path.join(DATA_DIR, "taqsim_ai.csv")
 EMBEDDINGS_DIR_PATH = os.path.join(DATA_DIR, "embeddings")
 NORMALIZED_EMBEDDINGS_DIR_PATH = os.path.join(DATA_DIR, "normalized_embeddings")
@@ -754,15 +755,15 @@ def embedding_visualizer_ui():
         ["UMAP", "T-SNE", "PCA"],
         index=0,  # Default to UMAP
     )
-    
+
     # UMAP parameters section (only shown when UMAP is selected)
     if reduction_method == "UMAP":
         st.sidebar.subheader("UMAP Parameters")
-        
+
         # Initialize n_neighbors in session state if not already set
         if "umap_n_neighbors" not in st.session_state:
             st.session_state.umap_n_neighbors = 15
-        
+
         # Slider for n_neighbors parameter
         st.sidebar.slider(
             "Number of Neighbors",
@@ -771,7 +772,7 @@ def embedding_visualizer_ui():
             value=st.session_state.umap_n_neighbors,
             step=1,
             help="Controls the balance between local and global structure. Lower values (2-15) preserve local structure, higher values (30-100) preserve global structure.",
-            key="umap_n_neighbors"
+            key="umap_n_neighbors",
         )
 
     # Artist Filter Section
@@ -930,10 +931,12 @@ def embedding_visualizer_ui():
         with st.spinner("Generating visualization..."):
             # Set normalize_by_artist based on the embedding source selection
             normalize_by_artist = False  # We don't need additional normalization since we're using pre-normalized embeddings
-            
+
             # Get n_neighbors value from session state if UMAP is selected, otherwise use default
-            umap_n_neighbors = st.session_state.umap_n_neighbors if reduction_method == "UMAP" else 15
-            
+            umap_n_neighbors = (
+                st.session_state.umap_n_neighbors if reduction_method == "UMAP" else 15
+            )
+
             chart = create_embedding_visualization(
                 embeddings_dir=embeddings_dir,
                 embedding_type=embedding_type,
