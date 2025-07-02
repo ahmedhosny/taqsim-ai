@@ -24,4 +24,4 @@ RUN mkdir -p /app/data/embeddings /app/data/visualizations /app/data/audio_chunk
 ENV PYTHONUNBUFFERED=1
 
 # Command to run the Streamlit app
-CMD streamlit run streamlit/embedding_visualizer_streamlit.py --server.port=8080 --server.address=0.0.0.0
+CMD streamlit run /app/streamlit/streamlit_app.py --server.port=8080 --server.address=0.0.0.0
