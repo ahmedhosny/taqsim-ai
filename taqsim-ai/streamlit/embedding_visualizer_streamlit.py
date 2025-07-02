@@ -769,7 +769,6 @@ def embedding_visualizer_ui():
             "Number of Neighbors",
             min_value=2,
             max_value=100,
-            value=st.session_state.umap_n_neighbors,
             step=1,
             help="Controls the balance between local and global structure. Lower values (2-15) preserve local structure, higher values (30-100) preserve global structure.",
             key="umap_n_neighbors",
@@ -797,7 +796,7 @@ def embedding_visualizer_ui():
     else:
         with st.sidebar.expander("Filter by Artist", expanded=False):
             st.multiselect(
-                "",
+                "Select Artists",
                 options=current_artist_options,
                 key="multiselect_artist_value",
                 on_change=callback_multiselect_artists,
@@ -831,7 +830,7 @@ def embedding_visualizer_ui():
     else:
         with st.sidebar.expander("Filter by Taqsim", expanded=False):
             st.multiselect(
-                "",
+                "Select Taqsims",
                 options=current_song_options,
                 key="multiselect_song_value",
                 on_change=callback_multiselect_songs,
@@ -865,7 +864,7 @@ def embedding_visualizer_ui():
     else:
         with st.sidebar.expander("Filter by Maqam", expanded=False):
             st.multiselect(
-                "",
+                "Select Maqams",
                 options=current_maqam_options,
                 key="multiselect_maqam_value",
                 on_change=callback_multiselect_maqams,

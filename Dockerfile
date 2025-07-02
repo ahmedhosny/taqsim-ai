@@ -28,3 +28,5 @@ ENV PYTHONUNBUFFERED=1
 
 # Command to run the Streamlit app
 CMD streamlit run /app/taqsim-ai/streamlit/streamlit_app.py --server.port=8080 --server.address=0.0.0.0
+
+# docker run -p 8080:8080 -v $(pwd)/data:/app/data taqsim-ai

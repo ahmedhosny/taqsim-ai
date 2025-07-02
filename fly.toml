@@ -15,8 +15,9 @@ primary_region = "sjc"  # San Francisco region, change if needed
 [[vm]]
   cpu_kind = "shared"
   cpus = 1
-  memory_mb = 512  
+  memory_mb = 1024  
 
 [mounts]
   source = "taqsim_data"
   destination = "/app/data"
+  size_gb = 0.5
