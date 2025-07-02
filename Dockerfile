@@ -14,8 +14,8 @@ COPY . .
 # Install uv for Python package management
 RUN pip install --no-cache-dir uv
 
-# Install dependencies from pyproject.toml using uv
-RUN uv pip install --no-cache -e .
+# Install dependencies from pyproject.toml using uv with --system flag
+RUN uv pip install --system --no-cache -e .
 
 # Make sure the /data directories exist
 RUN mkdir -p /app/data/embeddings /app/data/visualizations /app/data/audio_chunks
