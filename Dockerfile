@@ -8,14 +8,14 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy pyproject.toml for dependency installation
-COPY pyproject.toml .
-
-# Install Python dependencies from pyproject.toml
-RUN pip install --no-cache-dir .
-
-# Copy the rest of the application
+# Copy all application files
 COPY . .
+
+# Install uv for Python package management
+RUN pip install --no-cache-dir uv
+
+# Install dependencies from pyproject.toml using uv
+RUN uv pip install --no-cache -e .
 
 # Make sure the /data directories exist
 RUN mkdir -p /app/data/embeddings /app/data/visualizations /app/data/audio_chunks
