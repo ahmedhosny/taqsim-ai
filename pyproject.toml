@@ -6,16 +6,11 @@ build-backend = "hatchling.build"
 name = "taqsim-ai"
 version = "0.1.0"
 description = "Taqsim AI project"
-readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 dependencies = [
     "numpy>=1.24.0",
-    "transformers>=4.30.0",
-    "torch>=2.0.0",
-    "torchaudio>=2.0.0",
     "librosa>=0.10.0",
-    "yt-dlp>=2025.3.31",
     "soundfile>=0.12.1",
     "audioread>=3.0.0",
     "matplotlib>=3.9.4",
@@ -34,4 +29,8 @@ packages = ["taqsim-ai"]
 [dependency-groups]
 dev = [
     "ruff>=0.11.7",
+    "transformers>=4.30.0",
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+    "yt-dlp>=2025.3.31",
 ]
