@@ -21,6 +21,7 @@ dependencies = [
     "scikit-learn>=1.6.1",
     "xgboost>=2.1.4",
     "seaborn>=0.13.2",
+    "google-api-python-client>=2.176.0",
 ]
 
 [tool.hatch.build.targets.wheel]
