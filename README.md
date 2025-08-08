@@ -1,3 +1,10 @@
+- run pipeline
+
+python taqsim-ai/processing/pipeline.py --downloads-dir /Users/ahmedhosny/taqsim-ai/data/downloads --processed-dir /Users/ahmedhosny/taqsim-ai/data/processed --chunks-dir /Users/ahmedhosny/taqsim-ai/data/audio_chunks --embeddings-dir /Users/ahmedhosny/taqsim-ai/taqsim-ai/data/embeddings --process-mode all
+
+
+
+
  brew install ffmpeg
 
 # taqsim-ai
